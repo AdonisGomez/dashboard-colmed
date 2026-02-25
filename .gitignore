@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+
+# Datos locales (no subir a GitHub)
+*.csv
+
+# Certificados
+*.crt
+
+# Auditorías de API keys u otros secretos
+api-keys-audit-*.json
+
+# Checkpoints de notebooks
+*.ipynb_checkpoints*
