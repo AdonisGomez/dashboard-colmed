@@ -716,12 +716,14 @@
 
       // vista === 'acumulado'
       document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión virtual mensual';
-      const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
+      const periodoSelect = document.getElementById('periodo-select');
+      const periodo = (periodoSelect && periodoSelect.value) || selectedPeriodo || '';
       if (!periodo) {
         selectedPeriodo = '';
         updateKpis();
         return;
       }
+      selectedPeriodo = periodo;
       let pagosAcum = 0;
       let labelOdoo = 'Pagos acumulados (Odoo)';
       let labelResto = 'Nuevo saldo cartera (estimado)';
@@ -819,7 +821,7 @@
     });
     document.getElementById('periodo-select').addEventListener('change', e => {
       selectedPeriodo = e.target.value;
-      if (!selectedPeriodo) renderTable();
+      renderTable();
       updateKpisPorVista();
     });
 
