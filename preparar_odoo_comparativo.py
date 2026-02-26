@@ -9,6 +9,7 @@ ODOO_DIR = BASE_DIR / "odoo"
 OUT_DETALLE = ODOO_DIR / "odoo_cuotas_unificado.xlsx"
 OUT_RESUMEN = ODOO_DIR / "odoo_resumen_socios.xlsx"
 OUT_PAGOS_MES = ODOO_DIR / "odoo_pagos_mensuales.xlsx"
+OUT_PAGOS_DIA = ODOO_DIR / "odoo_pagos_por_dia.xlsx"
 
 
 def cargar_y_unir_archivos() -> pd.DataFrame:
@@ -57,15 +58,50 @@ def preparar_detalle(df: pd.DataFrame) -> pd.DataFrame:
     # Montos numéricos
     det["MONTO"] = pd.to_numeric(det["MONTO"], errors="coerce").fillna(0.0)
 
-    # Fechas: intentamos usar FECHA APLICACION como fecha principal; si no hay, FECHA COMPROB.
+    # Fechas:
+    # - FECHA_PAGO: cuándo entra el dinero (caja) → FECHA REGISTRO.
+    # - FECHA_PERIODO: a qué mes/año se aplica el pago → FECHA APLICACION, si no FECHA COMPROB.
     fecha_apl = pd.to_datetime(det["FECHA APLICACION"], errors="coerce", dayfirst=True)
     fecha_comp = pd.to_datetime(det["FECHA COMPROB."], errors="coerce", dayfirst=True)
     fecha_reg = pd.to_datetime(det["FECHA REGISTRO"], errors="coerce", dayfirst=True)
 
-    fecha_base = fecha_apl.combine_first(fecha_comp).combine_first(fecha_reg)
+    fecha_periodo = fecha_apl.combine_first(fecha_comp)
+    det["FECHA_PERIODO"] = fecha_periodo
+    det["ANIO_PERIODO"] = det["FECHA_PERIODO"].dt.year
+    det["MES_PERIODO"] = det["FECHA_PERIODO"].dt.month
+
+    det["FECHA_PAGO"] = fecha_reg
+    det["ANIO_PAGO"] = det["FECHA_PAGO"].dt.year
+    det["MES_PAGO"] = det["FECHA_PAGO"].dt.month
+    det["DIA_PAGO"] = det["FECHA_PAGO"].dt.day
+    det["SEMANA_PAGO"] = (
+        det["FECHA_PAGO"].dt.isocalendar().year.astype("Int64").astype(str)
+        + "-W"
+        + det["FECHA_PAGO"].dt.isocalendar().week.astype("Int64").astype(str).str.zfill(2)
+    )
+
+    # FECHA_BASE se mantiene para compatibilidad: usamos periodo si existe,
+    # y como último recurso FECHA_PAGO.
+    fecha_base = fecha_periodo.combine_first(fecha_reg)
     det["FECHA_BASE"] = fecha_base
     det["ANIO"] = det["FECHA_BASE"].dt.year
     det["MES"] = det["FECHA_BASE"].dt.month
+    det["DIA"] = det["FECHA_BASE"].dt.day
+    det["SEMANA"] = (
+        det["FECHA_BASE"].dt.isocalendar().year.astype("Int64").astype(str)
+        + "-W"
+        + det["FECHA_BASE"].dt.isocalendar().week.astype("Int64").astype(str).str.zfill(2)
+    )
+
+    # Código de socio Odoo a partir del comprobante, ej. MEM/2025/7572 → 7572.
+    cod_segment = (
+        det["COMPROBANTE"]
+        .astype(str)
+        .str.split("/")
+        .str[-1]
+        .str.extract(r"(\d+)", expand=False)
+    )
+    det["CODIGO_SOCIO_ODOO"] = pd.to_numeric(cod_segment, errors="coerce").astype("Int64")
 
     return det
 
@@ -120,10 +156,10 @@ def main() -> None:
     resumen.to_excel(OUT_RESUMEN, index=True)
     print(f"Resumen por socio guardado en: {OUT_RESUMEN}")
 
-    # Resumen mensual de pagos (para KPIs por periodo)
+    # Resumen mensual de pagos por FECHA_PAGO (caja)
     pagos_mes = (
-        det.dropna(subset=["ANIO", "MES"])
-        .groupby(["ANIO", "MES"], dropna=True)
+        det.dropna(subset=["ANIO_PAGO", "MES_PAGO"])
+        .groupby(["ANIO_PAGO", "MES_PAGO"], dropna=True)
         .agg(
             Monto_pagado_mes=("MONTO", "sum"),
             Numero_pagos_mes=("MONTO", "size"),
@@ -131,8 +167,34 @@ def main() -> None:
         )
         .reset_index()
     )
+    pagos_mes = pagos_mes.rename(columns={"ANIO_PAGO": "ANIO", "MES_PAGO": "MES"})
     pagos_mes.to_excel(OUT_PAGOS_MES, index=False)
     print(f"Resumen mensual de pagos guardado en: {OUT_PAGOS_MES}")
+
+    # Resumen por día de pagos (caja) usando FECHA_PAGO
+    det_con_fecha = det.dropna(subset=["FECHA_PAGO"])
+    pagos_dia = (
+        det_con_fecha.groupby(det_con_fecha["FECHA_PAGO"].dt.normalize(), dropna=True)
+        .agg(
+            Monto_pagado_dia=("MONTO", "sum"),
+            Numero_pagos_dia=("MONTO", "size"),
+            Socios_unicos_dia=("CONSUMIDOR", "nunique"),
+        )
+        .reset_index()
+        .rename(columns={"FECHA_PAGO": "fecha"})
+    )
+    pagos_dia["fecha"] = pd.to_datetime(pagos_dia["fecha"]).dt.date
+    pagos_dia["ANIO"] = pd.to_datetime(pagos_dia["fecha"]).dt.year
+    pagos_dia["MES"] = pd.to_datetime(pagos_dia["fecha"]).dt.month
+    pagos_dia["DIA"] = pd.to_datetime(pagos_dia["fecha"]).dt.day
+    pagos_dia["SEMANA"] = (
+        pd.to_datetime(pagos_dia["fecha"]).dt.isocalendar().year.astype("Int64").astype(str)
+        + "-W"
+        + pd.to_datetime(pagos_dia["fecha"]).dt.isocalendar().week.astype("Int64").astype(str).str.zfill(2)
+    )
+    pagos_dia["fecha_str"] = pagos_dia["fecha"].astype(str)
+    pagos_dia.to_excel(OUT_PAGOS_DIA, index=False)
+    print(f"Resumen por día de pagos guardado en: {OUT_PAGOS_DIA}")
 
 
 if __name__ == "__main__":

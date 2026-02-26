@@ -21,6 +21,7 @@ IN_FILE = BASE_DIR / "odoo_vs_mora_socios.xlsx"
 OUT_HTML = BASE_DIR / "dashboard_odoo_vs_mora.html"
 PLAN_FILE = BASE_DIR.parent / "sep" / "Reporte_Montos_PowerBI_socios.xlsx"
 PAGOS_MES_FILE = BASE_DIR / "odoo_pagos_mensuales.xlsx"
+PAGOS_DIA_FILE = BASE_DIR / "odoo_pagos_por_dia.xlsx"
 
 
 def main() -> None:
@@ -129,6 +130,27 @@ def main() -> None:
     except Exception:
         pagos_mes_list = []
 
+    # Pagos por día (para vista por día específico y acumulado hasta fecha)
+    pagos_dia_list: list[dict] = []
+    try:
+        pdia = pd.read_excel(PAGOS_DIA_FILE)
+        pdia.columns = [str(c).strip() for c in pdia.columns]
+        if {"fecha", "ANIO", "MES", "DIA", "Monto_pagado_dia"}.issubset(pdia.columns):
+            pdia = pdia.dropna(subset=["fecha"])
+            pdia["fecha_str"] = pd.to_datetime(pdia["fecha"], errors="coerce").dt.strftime("%Y-%m-%d")
+            pdia["ANIO"] = pdia["ANIO"].astype(int)
+            pdia["MES"] = pdia["MES"].astype(int)
+            pdia["DIA"] = pdia["DIA"].astype(int)
+            pagos_dia_list = pdia[
+                ["fecha_str", "ANIO", "MES", "DIA", "SEMANA", "Monto_pagado_dia", "Numero_pagos_dia", "Socios_unicos_dia"]
+            ].to_dict(orient="records")
+            for r in pagos_dia_list:
+                if "SEMANA" in r and (pd.isna(r["SEMANA"]) or r["SEMANA"] is None):
+                    r["SEMANA"] = ""
+                r["SEMANA"] = str(r.get("SEMANA") or "")
+    except Exception:
+        pagos_dia_list = []
+
     # Resumen por clasificación
     resumen_clasif = (
         df.groupby("Clasificacion", dropna=False)
@@ -172,6 +194,7 @@ def main() -> None:
     detalle_records = json.dumps(detalle.to_dict(orient="records"), ensure_ascii=False)
     resumen_records = json.dumps(resumen_clasif.to_dict(orient="records"), ensure_ascii=False)
     pagos_mes_json = json.dumps(pagos_mes_list, ensure_ascii=False)
+    pagos_dia_json = json.dumps(pagos_dia_list, ensure_ascii=False)
 
     html = f"""<!DOCTYPE html>
 <html lang="es">
@@ -464,10 +487,35 @@ def main() -> None:
         </select>
       </div>
       <div class="filter-select">
+        <label for="vista-select">Vista:</label>
+        <select id="vista-select">
+          <option value="acumulado">Acumulado por mes</option>
+          <option value="provisionado">Provisionado por mes</option>
+          <option value="dia">Por día específico</option>
+          <option value="semana">Por semana</option>
+        </select>
+      </div>
+      <div class="filter-select" id="wrap-periodo">
         <label for="periodo-select">Periodo (año-mes):</label>
         <select id="periodo-select">
           <option value="">Todos</option>
         </select>
+      </div>
+      <div class="filter-select" id="wrap-vista-dia" style="display:none;">
+        <label for="vista-anio">Año:</label>
+        <select id="vista-anio"><option value="">—</option></select>
+      </div>
+      <div class="filter-select" id="wrap-vista-mes" style="display:none;">
+        <label for="vista-mes">Mes:</label>
+        <select id="vista-mes"><option value="">—</option></select>
+      </div>
+      <div class="filter-select" id="wrap-vista-dia-num" style="display:none;">
+        <label for="vista-dia">Día:</label>
+        <select id="vista-dia"><option value="">—</option></select>
+      </div>
+      <div class="filter-select" id="wrap-vista-semana" style="display:none;">
+        <label for="vista-semana">Semana:</label>
+        <select id="vista-semana"><option value="">—</option></select>
       </div>
     </div>
 
@@ -502,6 +550,7 @@ def main() -> None:
     const DETALLE = {detalle_records};
     const RESUMEN = {resumen_records};
     const PAGOS_MES = {pagos_mes_json};
+    const PAGOS_DIA = {pagos_dia_json};
     const PROVISION_MENSUAL = {total_provision};
     const TOTAL_SOCIOS_CRUCE = {total_socios};
     const CARTERA_INICIAL = {total_mora};
@@ -511,6 +560,11 @@ def main() -> None:
     let selectedAnio = '';
     let selectedRango = '';
     let selectedPeriodo = '';
+    let selectedVista = 'acumulado';
+    let selectedVistaAnio = '';
+    let selectedVistaMes = '';
+    let selectedVistaDia = '';
+    let selectedVistaSemana = '';
 
     function formatMoney(n) {{
       return '$ ' + Number(n || 0).toLocaleString('es-PE', {{
@@ -626,14 +680,194 @@ def main() -> None:
       }});
     }}
 
-    function updateKpisPeriodo() {{
-      const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
-      if (!periodo) {{
-        // Sin periodo: dejamos que los KPIs globales de updateKpis dominen.
-        selectedPeriodo = '';
+    function toggleFiltrosVista() {{
+      const vista = selectedVista || document.getElementById('vista-select').value;
+      const wrapPeriodo = document.getElementById('wrap-periodo');
+      const wrapDia = document.getElementById('wrap-vista-dia');
+      const wrapMes = document.getElementById('wrap-vista-mes');
+      const wrapDiaNum = document.getElementById('wrap-vista-dia-num');
+      const wrapSemana = document.getElementById('wrap-vista-semana');
+      if (vista === 'dia') {{
+        // Vista por día: año, mes y día.
+        wrapPeriodo.style.display = 'none';
+        wrapDia.style.display = 'flex';
+        wrapMes.style.display = 'flex';
+        wrapDiaNum.style.display = 'flex';
+        wrapSemana.style.display = 'none';
+      }} else if (vista === 'semana') {{
+        // Vista por semana: año y semana ISO.
+        wrapPeriodo.style.display = 'none';
+        wrapDia.style.display = 'flex';
+        wrapMes.style.display = 'none';
+        wrapDiaNum.style.display = 'none';
+        wrapSemana.style.display = 'flex';
+      }} else {{
+        // Vistas mensuales: solo periodo año-mes.
+        wrapPeriodo.style.display = 'flex';
+        wrapDia.style.display = 'none';
+        wrapMes.style.display = 'none';
+        wrapDiaNum.style.display = 'none';
+        wrapSemana.style.display = 'none';
+      }}
+    }}
+
+    function populateVistaDiaSelects() {{
+      const anios = [...new Set(PAGOS_DIA.map(p => p.ANIO))].filter(a => a != null).sort((a,b)=>a-b);
+      const selAnio = document.getElementById('vista-anio');
+      const selMes = document.getElementById('vista-mes');
+      const selDia = document.getElementById('vista-dia');
+      const selSemana = document.getElementById('vista-semana');
+      const savAnio = selAnio.value;
+      const savMes = selMes.value;
+      const savDia = selDia.value;
+
+      selAnio.innerHTML = '<option value="">—</option>';
+      anios.forEach(a => {{
+        const opt = document.createElement('option');
+        opt.value = String(a);
+        opt.textContent = String(a);
+        selAnio.appendChild(opt);
+      }});
+      if (savAnio) selAnio.value = savAnio;
+
+      const anioSel = selAnio.value ? Number(selAnio.value) : null;
+      const meses = anioSel == null ? [] : [...new Set(PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel).map(p => p.MES))].filter(m => m != null).sort((a,b)=>a-b);
+      selMes.innerHTML = '<option value="">—</option>';
+      meses.forEach(m => {{
+        const opt = document.createElement('option');
+        opt.value = String(m);
+        opt.textContent = String(m).padStart(2,'0');
+        selMes.appendChild(opt);
+      }});
+      if (savMes) selMes.value = savMes;
+
+      const mesSel = selMes.value ? Number(selMes.value) : null;
+      const semanaSel = selSemana.value || '';
+      let diasFiltro = (anioSel == null || mesSel == null) ? [] : PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel && Number(p.MES) === mesSel);
+      if (semanaSel) diasFiltro = diasFiltro.filter(p => (p.SEMANA || '').toString() === semanaSel);
+      const dias = [...new Set(diasFiltro.map(p => p.DIA))].filter(d => d != null).sort((a,b)=>a-b);
+      selDia.innerHTML = '<option value="">—</option>';
+      dias.forEach(d => {{
+        const opt = document.createElement('option');
+        opt.value = String(d);
+        opt.textContent = String(d).padStart(2,'0');
+        selDia.appendChild(opt);
+      }});
+      if (savDia) selDia.value = savDia;
+
+      let semanas = [...new Set(PAGOS_DIA.map(p => (p.SEMANA || '').toString()).filter(s => s))];
+      if (anioSel != null) {{
+        const pref = String(anioSel) + '-W';
+        semanas = semanas.filter(s => s.startsWith(pref));
+      }}
+      semanas.sort();
+      selSemana.innerHTML = '<option value="">—</option>';
+      semanas.forEach(s => {{
+        const opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        selSemana.appendChild(opt);
+      }});
+    }}
+
+    function updateKpisPorVista() {{
+      const vista = selectedVista || document.getElementById('vista-select').value;
+      if (vista === 'dia') {{
+        const anio = document.getElementById('vista-anio').value;
+        const mes = document.getElementById('vista-mes').value;
+        const dia = document.getElementById('vista-dia').value;
+        if (!anio || !mes || !dia) {{
+          updateKpis();
+          return;
+        }}
+        const fechaStr = `${{anio}}-${{mes.padStart(2,'0')}}-${{dia.padStart(2,'0')}}`;
+        const filaDia = PAGOS_DIA.find(p => p.fecha_str === fechaStr);
+        const pagosDelDia = filaDia ? Number(filaDia.Monto_pagado_dia || 0) : 0;
+        const provisionDia = PROVISION_MENSUAL / 30;
+        let acumulado = 0;
+        PAGOS_DIA.forEach(p => {{
+          if ((p.fecha_str || '') <= fechaStr) acumulado += Number(p.Monto_pagado_dia || 0);
+        }});
+        const nuevoSaldo = Math.max(CARTERA_INICIAL - acumulado, 0);
+        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del día (meta)';
+        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del día';
+        document.getElementById('kpi-prov').textContent = formatMoney(provisionDia);
+        document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelDia);
+        document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
+        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Saldo cartera (acum. hasta fecha)';
         return;
       }}
-      // Pagos acumulados hasta el periodo seleccionado (año-mes inclusive)
+
+      if (vista === 'semana') {{
+        const anio = document.getElementById('vista-anio').value;
+        const semana = document.getElementById('vista-semana').value;
+        if (!anio || !semana) {{
+          updateKpis();
+          return;
+        }}
+        const semanaStr = semana;
+        const diasSemana = PAGOS_DIA.filter(p => (p.SEMANA || '').toString() === semanaStr);
+        const pagosSemana = diasSemana.reduce((s, p) => s + Number(p.Monto_pagado_dia || 0), 0);
+
+        let fechaCorte = '';
+        diasSemana.forEach(p => {{
+          const f = (p.fecha_str || '').toString();
+          if (f && f > fechaCorte) fechaCorte = f;
+        }});
+        let acumulado = 0;
+        PAGOS_DIA.forEach(p => {{
+          if ((p.fecha_str || '') <= fechaCorte) acumulado += Number(p.Monto_pagado_dia || 0);
+        }});
+        const provisionSemana = PROVISION_MENSUAL / 4;
+        const nuevoSaldo = Math.max(CARTERA_INICIAL - acumulado, 0);
+        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión de la semana (aprox.)';
+        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos de la semana';
+        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Saldo cartera (acum. fin de semana)';
+        document.getElementById('kpi-prov').textContent = formatMoney(provisionSemana);
+        document.getElementById('kpi-odoo').textContent = formatMoney(pagosSemana);
+        document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
+        return;
+      }}
+
+      if (vista === 'provisionado') {{
+        const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
+        if (!periodo) {{
+          updateKpis();
+          return;
+        }}
+        const [anioStr, mesStr] = periodo.split('-');
+        const anioSel = Number(anioStr);
+        const mesSel = Number(mesStr);
+        let pagosDelMes = 0;
+        PAGOS_MES.forEach(p => {{
+          if (Number(p.ANIO) === anioSel && Number(p.MES) === mesSel) pagosDelMes += Number(p.Monto_pagado_mes || 0);
+        }});
+        let pagosAcum = 0;
+        PAGOS_MES.forEach(p => {{
+          const a = Number(p.ANIO || 0);
+          const m = Number(p.MES || 0);
+          if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
+        }});
+        const nuevoSaldo = Math.max(CARTERA_INICIAL - pagosAcum, 0);
+        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del mes';
+        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del mes';
+        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo cartera (acum. al mes)';
+        document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
+        document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelMes);
+        document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
+        return;
+      }}
+
+      // vista === 'acumulado'
+      document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión virtual mensual';
+      document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos acumulados (Odoo)';
+      document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo cartera (estimado)';
+      const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
+      if (!periodo) {{
+        selectedPeriodo = '';
+        updateKpis();
+        return;
+      }}
       const [anioStr, mesStr] = periodo.split('-');
       const anioSel = Number(anioStr);
       const mesSel = Number(mesStr);
@@ -641,22 +875,16 @@ def main() -> None:
       PAGOS_MES.forEach(p => {{
         const a = Number(p.ANIO || 0);
         const m = Number(p.MES || 0);
-        if (a < anioSel || (a === anioSel && m <= mesSel)) {{
-          pagosAcum += Number(p.Monto_pagado_mes || 0);
-        }}
+        if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
       }});
-
-      // Provisión mensual esperada (base) no cambia por periodo
-      const expectedMes = PROVISION_MENSUAL;
       const nuevoSaldo = Math.max(CARTERA_INICIAL - pagosAcum, 0);
-
-      // Mostramos comparación global hasta el periodo:
-      // - Provisión mensual base (meta mensual)
-      // - Pagos acumulados hasta el periodo
-      // - Nuevo saldo de cartera (mora inicial - pagos acumulados hasta ese mes)
-      document.getElementById('kpi-prov').textContent = formatMoney(expectedMes);
+      document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
       document.getElementById('kpi-odoo').textContent = formatMoney(pagosAcum);
       document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
+    }}
+
+    function updateKpisPeriodo() {{
+      updateKpisPorVista();
     }}
 
     function renderTable() {{
@@ -719,19 +947,45 @@ def main() -> None:
     }});
     document.getElementById('periodo-select').addEventListener('change', e => {{
       selectedPeriodo = e.target.value;
-      if (!selectedPeriodo) {{
-        // Si se limpia el periodo, volvemos a KPIs globales.
-        renderTable();
-      }} else {{
-        updateKpisPeriodo();
+      if (!selectedPeriodo) renderTable();
+      updateKpisPorVista();
+    }});
+
+    document.getElementById('vista-select').addEventListener('change', e => {{
+      selectedVista = e.target.value;
+      toggleFiltrosVista();
+      if (selectedVista === 'dia' || selectedVista === 'semana') {{
+        populateVistaDiaSelects();
       }}
+      updateKpisPorVista();
+    }});
+
+    document.getElementById('vista-anio').addEventListener('change', () => {{
+      selectedVistaAnio = document.getElementById('vista-anio').value;
+      populateVistaDiaSelects();
+      updateKpisPorVista();
+    }});
+    document.getElementById('vista-mes').addEventListener('change', () => {{
+      selectedVistaMes = document.getElementById('vista-mes').value;
+      populateVistaDiaSelects();
+      updateKpisPorVista();
+    }});
+    document.getElementById('vista-dia').addEventListener('change', () => {{
+      selectedVistaDia = document.getElementById('vista-dia').value;
+      updateKpisPorVista();
+    }});
+    document.getElementById('vista-semana').addEventListener('change', () => {{
+      selectedVistaSemana = document.getElementById('vista-semana').value;
+      updateKpisPorVista();
     }});
 
     populateAnioSelect();
     populatePeriodoSelect();
+    toggleFiltrosVista();
+    if (PAGOS_DIA && PAGOS_DIA.length) populateVistaDiaSelects();
     renderChipsResumen();
     renderTable();
-    updateKpisPeriodo();
+    updateKpisPorVista();
   </script>
 </body>
 </html>
