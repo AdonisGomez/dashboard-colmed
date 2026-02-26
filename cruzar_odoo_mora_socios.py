@@ -22,7 +22,8 @@ def _parse_cuotas(texto: str) -> int | None:
         return None
     import re
 
-    nums = re.findall(r"(\\d+)", t)
+    # Buscar números en el texto, p.ej. '25 CUOTAS 38.50' -> 25
+    nums = re.findall(r"(\d+)", t)
     if not nums:
         return None
     try:
@@ -90,6 +91,16 @@ def cargar_mora() -> pd.DataFrame:
         mora["Rango_dias_por_cuotas"] = "Sin rango"
 
     mora = mora[mora["Codigo_socio"].notna()].copy()
+    # Depuración: un socio puede aparecer más de una vez → agregar por Codigo_socio
+    if mora["Codigo_socio"].duplicated().any():
+        mora = (
+            mora.groupby("Codigo_socio", as_index=False)
+            .agg(
+                Monto_mora=("Monto_mora", "sum"),
+                Rango_dias_por_cuotas=("Rango_dias_por_cuotas", "first"),
+            )
+        )
+        print("  Depuración mora: socios duplicados agregados (Monto_mora sumado, Rango primera aparición)")
     return mora
 
 
@@ -110,10 +121,14 @@ def cargar_membership() -> pd.DataFrame:
     master = df[[col_codigo, col_nombre]].copy()
     master.rename(columns={col_codigo: "Codigo_socio", col_nombre: "Nombre_socio"}, inplace=True)
     master["Codigo_socio"] = pd.to_numeric(master["Codigo_socio"], errors="coerce").astype("Int64")
-    master["Nombre_socio"] = master["Nombre_socio"].astype(str)
+    master["Nombre_socio"] = master["Nombre_socio"].astype(str).str.strip()
     master["Nombre_norm"] = master["Nombre_socio"].map(_normalizar_nombre)
-
     master = master[master["Codigo_socio"].notna()].copy()
+    # Depuración: un código puede repetirse → quedarse con la primera fila
+    antes = len(master)
+    master = master.drop_duplicates(subset=["Codigo_socio"], keep="first").copy()
+    if len(master) < antes:
+        print(f"  Depuración membership: {antes - len(master)} filas duplicadas por Codigo_socio eliminadas")
     return master
 
 
@@ -129,7 +144,7 @@ def cargar_resumen_odoo() -> pd.DataFrame:
         raise SystemExit(f"No encontré columna CONSUMIDOR en {ARCHIVO_RESUMEN_ODOO}: {df.columns}")
 
     od = df.copy()
-    od["CONSUMIDOR"] = od["CONSUMIDOR"].astype(str)
+    od["CONSUMIDOR"] = od["CONSUMIDOR"].astype(str).str.strip()
     od["Nombre_norm"] = od["CONSUMIDOR"].map(_normalizar_nombre)
 
     # Nos quedamos con columnas relevantes

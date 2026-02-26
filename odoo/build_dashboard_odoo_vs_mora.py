@@ -37,14 +37,17 @@ def main() -> None:
     else:
         df["Monto_mora_restante"] = (df["Monto_mora"] - df["Monto_pagado_total"]).clip(lower=0.0)
 
-    # Normalizar clasificación/estado
-    df["Clasificacion"] = df["Clasificacion"].astype(str)
-    df["Estado_socio_odoo_ultimo"] = df["Estado_socio_odoo_ultimo"].astype(str)
+    # Depuración: normalizar y rellenar NaN para JSON/dashboard (no modifica archivos originales)
+    df["Clasificacion"] = df["Clasificacion"].fillna("").astype(str).str.strip()
+    df["Estado_socio_odoo_ultimo"] = df["Estado_socio_odoo_ultimo"].fillna("").astype(str).str.strip()
+    if "Rango_dias_por_cuotas" in df.columns:
+        df["Rango_dias_por_cuotas"] = df["Rango_dias_por_cuotas"].fillna("Sin rango").astype(str).str.strip()
 
-    # Fechas a texto
+    # Fechas a texto (NaT → cadena vacía)
     for col in ["Primer_pago", "Ultimo_pago"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce").dt.strftime("%Y-%m-%d")
+            df[col] = df[col].fillna("").astype(str)
 
     # KPIs globales (sobre el cruce)
     total_socios = int(df["Codigo_socio"].nunique())
@@ -173,7 +176,7 @@ def main() -> None:
     resumen_clasif["__orden"] = resumen_clasif["Clasificacion"].map(orden_pref).fillna(9)
     resumen_clasif = resumen_clasif.sort_values("__orden").drop(columns="__orden")
 
-    # Datos para tabla detalle
+    # Datos para tabla detalle (rellenar NaN para evitar "nan" en JSON)
     detalle = df[
         [
             "Codigo_socio",
@@ -190,8 +193,11 @@ def main() -> None:
             "Rango_dias_por_cuotas",
         ]
     ].copy()
+    detalle["Nombre_socio"] = detalle["Nombre_socio"].fillna("").astype(str)
+    detalle["CONSUMIDOR"] = detalle["CONSUMIDOR"].fillna("").astype(str)
+    detalle["Numero_pagos"] = pd.to_numeric(detalle["Numero_pagos"], errors="coerce").fillna(0).astype(int)
 
-    detalle_records = json.dumps(detalle.to_dict(orient="records"), ensure_ascii=False)
+    detalle_records = json.dumps(detalle.to_dict(orient="records"), ensure_ascii=False, default=str)
     resumen_records = json.dumps(resumen_clasif.to_dict(orient="records"), ensure_ascii=False)
     pagos_mes_json = json.dumps(pagos_mes_list, ensure_ascii=False)
     pagos_dia_json = json.dumps(pagos_dia_list, ensure_ascii=False)
@@ -269,6 +275,13 @@ def main() -> None:
     .value {{
       font-size: 1.3rem;
       font-weight: 700;
+    }}
+    .kpi-hint {{
+      font-size: 0.65rem;
+      text-transform: none;
+      letter-spacing: 0;
+      margin-top: 0.15rem;
+      opacity: 0.85;
     }}
     .toolbar {{
       display: flex;
@@ -435,10 +448,12 @@ def main() -> None:
         <div class="card kpi">
           <div class="label">Pagos acumulados (Odoo)</div>
           <div class="value" id="kpi-odoo">$ {total_pagado:,.2f}</div>
+          <div class="label kpi-hint" id="kpi-odoo-hint">según periodo elegido abajo</div>
         </div>
         <div class="card kpi">
           <div class="label">Nuevo saldo cartera (estimado)</div>
           <div class="value" id="kpi-resto">$ {total_restante:,.2f}</div>
+          <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Pagos acumulados</div>
         </div>
       </div>
     </div>
@@ -607,9 +622,14 @@ def main() -> None:
       document.getElementById('kpi-socios').textContent = totalSocios.toLocaleString('es-PE');
       document.getElementById('kpi-mora').textContent = formatMoney(totalMora);
       document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
-      // Si NO hay periodo seleccionado, mostramos pagos y saldo globales.
-      // Si hay periodo seleccionado, estos valores los actualiza updateKpisPeriodo().
-      if (!selectedPeriodo) {{
+      // Sin periodo (o vista que no usa periodo): totales de los socios filtrados
+      if (!selectedPeriodo || selectedPeriodo === '__todo__') {{
+        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos acumulados (total histórico)';
+        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo (cartera − total cobrado)';
+        const hintOdoo = document.getElementById('kpi-odoo-hint');
+        const hintResto = document.getElementById('kpi-resto-hint');
+        if (hintOdoo) hintOdoo.textContent = 'todos los meses';
+        if (hintResto) hintResto.textContent = 'Cartera inicial − Pagos acumulados';
         document.getElementById('kpi-odoo').textContent = formatMoney(totalPagado);
         document.getElementById('kpi-resto').textContent = formatMoney(totalResto);
       }}
@@ -696,6 +716,7 @@ def main() -> None:
 
     function populatePeriodoSelect() {{
       const select = document.getElementById('periodo-select');
+      select.innerHTML = '<option value="">— Seleccione mes —</option>';
       const vistos = new Set();
       const mesesOrdenados = [...PAGOS_MES].sort((a,b) => a.periodo.localeCompare(b.periodo));
       mesesOrdenados.forEach(m => {{
@@ -707,6 +728,16 @@ def main() -> None:
           select.appendChild(opt);
         }}
       }});
+      const optTodo = document.createElement('option');
+      optTodo.value = '__todo__';
+      optTodo.textContent = 'Todos (histórico)';
+      select.appendChild(optTodo);
+      // Por defecto: último mes con datos (para comparar provisión mensual vs pagos de ese mes)
+      if (mesesOrdenados.length > 0) {{
+        const ultimo = mesesOrdenados[mesesOrdenados.length - 1].periodo;
+        select.value = ultimo;
+        selectedPeriodo = ultimo;
+      }}
     }}
 
     function toggleFiltrosVista() {{
@@ -860,7 +891,7 @@ def main() -> None:
 
       if (vista === 'provisionado') {{
         const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
-        if (!periodo) {{
+        if (!periodo || periodo === '__todo__') {{
           updateKpis();
           return;
         }}
@@ -889,24 +920,39 @@ def main() -> None:
 
       // vista === 'acumulado'
       document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión virtual mensual';
-      document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos acumulados (Odoo)';
-      document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo cartera (estimado)';
       const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
       if (!periodo) {{
         selectedPeriodo = '';
         updateKpis();
         return;
       }}
-      const [anioStr, mesStr] = periodo.split('-');
-      const anioSel = Number(anioStr);
-      const mesSel = Number(mesStr);
       let pagosAcum = 0;
-      PAGOS_MES.forEach(p => {{
-        const a = Number(p.ANIO || 0);
-        const m = Number(p.MES || 0);
-        if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
-      }});
+      let labelOdoo = 'Pagos acumulados (Odoo)';
+      let labelResto = 'Nuevo saldo cartera (estimado)';
+      if (periodo === '__todo__') {{
+        // Total histórico: suma de todos los meses
+        PAGOS_MES.forEach(p => {{ pagosAcum += Number(p.Monto_pagado_mes || 0); }});
+        labelOdoo = 'Pagos acumulados (total histórico)';
+        labelResto = 'Nuevo saldo (cartera − total cobrado)';
+      }} else {{
+        const [anioStr, mesStr] = periodo.split('-');
+        const anioSel = Number(anioStr);
+        const mesSel = Number(mesStr);
+        PAGOS_MES.forEach(p => {{
+          const a = Number(p.ANIO || 0);
+          const m = Number(p.MES || 0);
+          if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
+        }});
+        labelOdoo = 'Pagos acumulados (hasta ' + periodo + ')';
+        labelResto = 'Nuevo saldo al ' + periodo;
+      }}
       const nuevoSaldo = Math.max(CARTERA_INICIAL - pagosAcum, 0);
+      document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = labelOdoo;
+      document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = labelResto;
+      const hintOdoo = document.getElementById('kpi-odoo-hint');
+      const hintResto = document.getElementById('kpi-resto-hint');
+      if (hintOdoo) hintOdoo.textContent = periodo === '__todo__' ? 'todos los meses' : 'hasta el mes seleccionado';
+      if (hintResto) hintResto.textContent = 'Cartera inicial − Pagos acumulados';
       document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
       document.getElementById('kpi-odoo').textContent = formatMoney(pagosAcum);
       document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);

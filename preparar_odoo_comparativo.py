@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -52,18 +53,21 @@ def preparar_detalle(df: pd.DataFrame) -> pd.DataFrame:
     if faltantes:
         raise SystemExit(f"Faltan columnas en los archivos de Odoo: {faltantes}")
 
-    # Copia de trabajo
+    # Copia de trabajo (no se modifica la data original, solo esta copia)
     det = df[esperadas].copy()
 
-    # Montos numéricos
+    # Depuración: normalizar cadenas
+    for col in ["CONSUMIDOR", "ESTADO SOCIO", "TIPO PAGO", "ESTADO", "COMPROBANTE"]:
+        if col in det.columns:
+            det[col] = det[col].astype(str).str.strip()
     det["MONTO"] = pd.to_numeric(det["MONTO"], errors="coerce").fillna(0.0)
 
-    # Fechas:
+    # Fechas: formato YYYY-MM-DD → dayfirst=False para no intercambiar día/mes
     # - FECHA_PAGO: cuándo entra el dinero (caja) → FECHA REGISTRO.
     # - FECHA_PERIODO: a qué mes/año se aplica el pago → FECHA APLICACION, si no FECHA COMPROB.
-    fecha_apl = pd.to_datetime(det["FECHA APLICACION"], errors="coerce", dayfirst=True)
-    fecha_comp = pd.to_datetime(det["FECHA COMPROB."], errors="coerce", dayfirst=True)
-    fecha_reg = pd.to_datetime(det["FECHA REGISTRO"], errors="coerce", dayfirst=True)
+    fecha_apl = pd.to_datetime(det["FECHA APLICACION"], errors="coerce", dayfirst=False)
+    fecha_comp = pd.to_datetime(det["FECHA COMPROB."], errors="coerce", dayfirst=False)
+    fecha_reg = pd.to_datetime(det["FECHA REGISTRO"], errors="coerce", dayfirst=False)
 
     fecha_periodo = fecha_apl.combine_first(fecha_comp)
     det["FECHA_PERIODO"] = fecha_periodo
@@ -103,6 +107,22 @@ def preparar_detalle(df: pd.DataFrame) -> pd.DataFrame:
     )
     det["CODIGO_SOCIO_ODOO"] = pd.to_numeric(cod_segment, errors="coerce").astype("Int64")
 
+    # Periodo del archivo: cuotas_YYYY_MM.xlsx = año y mes que representa ese archivo
+    archivo_str = det["__archivo"].astype(str)
+    match = archivo_str.str.extract(r"cuotas_(\d{4})_(\d{2})", expand=True)
+    det["ANIO_ARCHIVO"] = pd.to_numeric(match[0], errors="coerce").astype("Int64")
+    det["MES_ARCHIVO"] = pd.to_numeric(match[1], errors="coerce").astype("Int64")
+
+    return det
+
+
+def depurar_detalle(det: pd.DataFrame) -> pd.DataFrame:
+    """Elimina duplicados exactos (mismo comprobante+monto+fecha+consumidor) para no inflar totales."""
+    antes = len(det)
+    clave = ["COMPROBANTE", "MONTO", "FECHA REGISTRO", "CONSUMIDOR"]
+    det = det.drop_duplicates(subset=clave, keep="first").copy()
+    if antes > len(det):
+        print(f"  Depuración: {antes - len(det)} filas duplicadas eliminadas (total {len(det)})")
     return det
 
 
@@ -144,9 +164,15 @@ def main() -> None:
     print(f"Filas unificadas: {len(df)}")
 
     det = preparar_detalle(df)
-    print(f"Filas en detalle con fecha base: {len(det)}")
+    print(f"Filas en detalle: {len(det)}")
+    det = depurar_detalle(det)
+    # Conteos para análisis
+    sin_fecha_pago = det["FECHA_PAGO"].isna().sum()
+    sin_periodo = det["FECHA_PERIODO"].isna().sum()
+    if sin_fecha_pago or sin_periodo:
+        print(f"  Filas sin FECHA_PAGO: {sin_fecha_pago}, sin FECHA_PERIODO: {sin_periodo}")
 
-    # Guardar detalle completo (todas las cuotas Odoo unificadas)
+    # Guardar detalle completo (todas las cuotas Odoo unificadas) — solo outputs, no originales
     OUT_DETALLE.parent.mkdir(parents=True, exist_ok=True)
     det.to_excel(OUT_DETALLE, index=False)
     print(f"Detalle unificado guardado en: {OUT_DETALLE}")
@@ -156,10 +182,11 @@ def main() -> None:
     resumen.to_excel(OUT_RESUMEN, index=True)
     print(f"Resumen por socio guardado en: {OUT_RESUMEN}")
 
-    # Resumen mensual de pagos por FECHA_PAGO (caja)
+    # Resumen mensual por periodo del archivo (cada archivo = un mes: cuotas_YYYY_MM)
+    # Así 2026-01 aparece si existe cuotas_2026_01.xlsx, con la suma de pagos de ese archivo
     pagos_mes = (
-        det.dropna(subset=["ANIO_PAGO", "MES_PAGO"])
-        .groupby(["ANIO_PAGO", "MES_PAGO"], dropna=True)
+        det.dropna(subset=["ANIO_ARCHIVO", "MES_ARCHIVO"])
+        .groupby(["ANIO_ARCHIVO", "MES_ARCHIVO"], dropna=True)
         .agg(
             Monto_pagado_mes=("MONTO", "sum"),
             Numero_pagos_mes=("MONTO", "size"),
@@ -167,7 +194,7 @@ def main() -> None:
         )
         .reset_index()
     )
-    pagos_mes = pagos_mes.rename(columns={"ANIO_PAGO": "ANIO", "MES_PAGO": "MES"})
+    pagos_mes = pagos_mes.rename(columns={"ANIO_ARCHIVO": "ANIO", "MES_ARCHIVO": "MES"})
     pagos_mes.to_excel(OUT_PAGOS_MES, index=False)
     print(f"Resumen mensual de pagos guardado en: {OUT_PAGOS_MES}")
 
