@@ -462,10 +462,6 @@ def main() -> None:
         <label for="estado-odoo-select">Estado Odoo:</label>
         <select id="estado-odoo-select">
           <option value="">Todos</option>
-          <option value="active">active</option>
-          <option value="confirm">confirm</option>
-          <option value="expired">expired</option>
-          <option value="mora">mora</option>
         </select>
       </div>
       <div class="filter-select">
@@ -647,6 +643,7 @@ def main() -> None:
         chip.addEventListener('click', () => {{
           selectedClasif = selectedClasif === r.Clasificacion ? '' : r.Clasificacion;
           document.getElementById('clasif-select').value = selectedClasif;
+          populateEstadoOdooSelect();
           renderChipsResumen();
           renderTable();
         }});
@@ -663,6 +660,38 @@ def main() -> None:
         opt.textContent = String(a);
         select.appendChild(opt);
       }});
+    }}
+
+    function populateEstadoOdooSelect() {{
+      const select = document.getElementById('estado-odoo-select');
+      const clasif = selectedClasif || document.getElementById('clasif-select').value || '';
+      const estadosSet = new Set();
+      DETALLE.forEach(r => {{
+        if (clasif && (r.Clasificacion || '') !== clasif) return;
+        const e = String(r.Estado_socio_odoo_ultimo || '').toLowerCase();
+        if (!e) return;
+        estadosSet.add(e);
+      }});
+      const prev = select.value;
+      select.innerHTML = '';
+      const optAll = document.createElement('option');
+      optAll.value = '';
+      optAll.textContent = 'Todos';
+      select.appendChild(optAll);
+      const estados = Array.from(estadosSet).sort();
+      estados.forEach(e => {{
+        const opt = document.createElement('option');
+        opt.value = e;
+        opt.textContent = e;
+        select.appendChild(opt);
+      }});
+      if (prev && estados.includes(prev)) {{
+        select.value = prev;
+        selectedEstado = prev;
+      }} else {{
+        select.value = '';
+        selectedEstado = '';
+      }}
     }}
 
     function populatePeriodoSelect() {{
@@ -930,6 +959,7 @@ def main() -> None:
     }});
     document.getElementById('clasif-select').addEventListener('change', e => {{
       selectedClasif = e.target.value;
+      populateEstadoOdooSelect();
       renderChipsResumen();
       renderTable();
     }});
@@ -980,6 +1010,7 @@ def main() -> None:
     }});
 
     populateAnioSelect();
+    populateEstadoOdooSelect();
     populatePeriodoSelect();
     toggleFiltrosVista();
     if (PAGOS_DIA && PAGOS_DIA.length) populateVistaDiaSelects();
