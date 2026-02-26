@@ -468,9 +468,6 @@ def main() -> None:
           <option value="">Todas</option>
           <option value="Mora_y_paga_en_Odoo">Mora y paga en Odoo</option>
           <option value="Sigue_en_mora">Sigue en mora</option>
-          <option value="Al_dia_en_mora_y_paga_en_Odoo">Al día en mora y paga en Odoo</option>
-          <option value="Solo_en_Odoo">Solo en Odoo</option>
-          <option value="Sin_informacion_clara">Sin información clara</option>
         </select>
       </div>
       <div class="filter-select">
