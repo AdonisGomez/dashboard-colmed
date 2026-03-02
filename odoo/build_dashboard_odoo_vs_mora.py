@@ -363,7 +363,11 @@ def main() -> None:
       background: #fff;
       color: var(--text);
       font-size: 0.85rem;
+      min-width: 84px;
     }}
+    #vista-anio {{ min-width: 92px; }}
+    #vista-mes {{ min-width: 72px; }}
+    #vista-dia {{ min-width: 72px; }}
     .filter-select select option {{
       color: var(--text);
     }}
