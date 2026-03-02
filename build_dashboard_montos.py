@@ -30,8 +30,8 @@ CUOTAS_FILE = BASE_DIR / "BasesDeDatos-CUOTAS.xlsx"
 
 def parse_cuotas(texto: str):
     """'25 CUOTAS 38.50' -> (25, 38.50).
-    Implementación robusta: toma simplemente los números que aparezcan en el texto.
-    El primero se interpreta como # de cuotas, el segundo como monto de la cuota.
+    Implementación robusta: toma los números que aparezcan en el texto.
+    El primero se interpreta como # de cuotas (entero), el segundo como monto de la cuota (puede ser decimal).
     """
     if not isinstance(texto, str):
         return None, None
@@ -39,12 +39,12 @@ def parse_cuotas(texto: str):
     if not t:
         return None, None
     try:
-        # Buscar todos los números en el texto (solo enteros; el primero es # de cuotas, el segundo el monto)
-        nums = re.findall("(\\d+)", t)
+        # Buscar números: enteros o decimales (ej. 25, 38.50); primero # cuotas, segundo monto cuota
+        nums = re.findall(r"(\d+(?:[.,]\d+)?)", t)
         if not nums:
             return None, None
-        num = int(nums[0])
-        monto = float(nums[1]) if len(nums) > 1 else None
+        num = int(float(nums[0].replace(",", ".")))
+        monto = float(nums[1].replace(",", ".")) if len(nums) > 1 else None
         return num, monto
     except Exception:
         return None, None
