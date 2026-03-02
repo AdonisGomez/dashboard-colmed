@@ -304,7 +304,7 @@ def main() -> None:
     }}
     .toolbar {{
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-start;
       align-items: center;
       gap: 0.75rem;
       margin: 0.75rem 0;
