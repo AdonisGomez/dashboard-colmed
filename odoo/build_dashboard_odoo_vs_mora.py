@@ -431,7 +431,7 @@ def main() -> None:
 <body>
   <div class="container">
     <div class="header">
-      <h1>Mora vs Pagos en Odoo</h1>
+      <h1>DASHBOARD COLMED</h1>
       <div class="kpi-row">
         <div class="card kpi">
           <div class="label">Socios en cruce</div>
@@ -829,6 +829,9 @@ def main() -> None:
 
     function updateKpisPorVista() {{
       const vista = selectedVista || document.getElementById('vista-select').value;
+      const rowsFilt = getFilteredRows();
+      const totalMoraFilt = rowsFilt.reduce((s, r) => s + Number(r.Monto_mora || 0), 0);
+      const ratioMora = CARTERA_INICIAL > 0 ? (totalMoraFilt / CARTERA_INICIAL) : 1;
       if (vista === 'dia') {{
         const anio = document.getElementById('vista-anio').value;
         const mes = document.getElementById('vista-mes').value;
@@ -839,13 +842,15 @@ def main() -> None:
         }}
         const fechaStr = `${{anio}}-${{mes.padStart(2,'0')}}-${{dia.padStart(2,'0')}}`;
         const filaDia = PAGOS_DIA.find(p => p.fecha_str === fechaStr);
-        const pagosDelDia = filaDia ? Number(filaDia.Monto_pagado_dia || 0) : 0;
+        const pagosDelDiaGlobal = filaDia ? Number(filaDia.Monto_pagado_dia || 0) : 0;
+        const pagosDelDia = pagosDelDiaGlobal * ratioMora;
         const provisionDia = PROVISION_MENSUAL / 30;
         let acumulado = 0;
         PAGOS_DIA.forEach(p => {{
           if ((p.fecha_str || '') <= fechaStr) acumulado += Number(p.Monto_pagado_dia || 0);
         }});
-        const nuevoSaldo = Math.max(CARTERA_INICIAL - acumulado, 0);
+        const acumuladoEscalado = acumulado * ratioMora;
+        const nuevoSaldo = Math.max(totalMoraFilt - acumuladoEscalado, 0);
         document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del día (meta)';
         document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del día';
         document.getElementById('kpi-prov').textContent = formatMoney(provisionDia);
@@ -864,7 +869,8 @@ def main() -> None:
         }}
         const semanaStr = semana;
         const diasSemana = PAGOS_DIA.filter(p => (p.SEMANA || '').toString() === semanaStr);
-        const pagosSemana = diasSemana.reduce((s, p) => s + Number(p.Monto_pagado_dia || 0), 0);
+        const pagosSemanaGlobal = diasSemana.reduce((s, p) => s + Number(p.Monto_pagado_dia || 0), 0);
+        const pagosSemana = pagosSemanaGlobal * ratioMora;
 
         let fechaCorte = '';
         diasSemana.forEach(p => {{
@@ -876,7 +882,8 @@ def main() -> None:
           if ((p.fecha_str || '') <= fechaCorte) acumulado += Number(p.Monto_pagado_dia || 0);
         }});
         const provisionSemana = PROVISION_MENSUAL / 4;
-        const nuevoSaldo = Math.max(CARTERA_INICIAL - acumulado, 0);
+        const acumuladoEscalado = acumulado * ratioMora;
+        const nuevoSaldo = Math.max(totalMoraFilt - acumuladoEscalado, 0);
         document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión de la semana (aprox.)';
         document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos de la semana';
         document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Saldo cartera (acum. fin de semana)';
@@ -905,12 +912,14 @@ def main() -> None:
           const m = Number(p.MES || 0);
           if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
         }});
-        const nuevoSaldo = Math.max(CARTERA_INICIAL - pagosAcum, 0);
+        const pagosDelMesEsc = pagosDelMes * ratioMora;
+        const pagosAcumEsc = pagosAcum * ratioMora;
+        const nuevoSaldo = Math.max(totalMoraFilt - pagosAcumEsc, 0);
         document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del mes';
         document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del mes';
         document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo cartera (acum. al mes)';
         document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
-        document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelMes);
+        document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelMesEsc);
         document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
         return;
       }}
@@ -945,7 +954,8 @@ def main() -> None:
         labelOdoo = 'Pagos acumulados (hasta ' + periodo + ')';
         labelResto = 'Nuevo saldo al ' + periodo;
       }}
-      const nuevoSaldo = Math.max(CARTERA_INICIAL - pagosAcum, 0);
+      const pagosAcumEsc = pagosAcum * ratioMora;
+      const nuevoSaldo = Math.max(totalMoraFilt - pagosAcumEsc, 0);
       document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = labelOdoo;
       document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = labelResto;
       const hintOdoo = document.getElementById('kpi-odoo-hint');
