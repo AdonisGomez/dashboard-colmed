@@ -281,7 +281,7 @@ def main():
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dashboard de cuotas hasta septiembre 2025</title>
+  <title>Dashboard de cuotas hasta cierre de 2025</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
@@ -676,7 +676,7 @@ def main():
 <body>
   <div class="container">
     <div class="header">
-      <h1>Dashboard de cuotas hasta septiembre 2025</h1>
+      <h1>Dashboard de cuotas hasta cierre de 2025</h1>
       <div class="cards" id="kpi-cards" style="margin:0; gap:0.75rem;">
         <div class="card" style="padding:0.6rem 0.9rem;">
           <div class="label">Monto total</div>
