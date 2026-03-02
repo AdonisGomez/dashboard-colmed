@@ -222,6 +222,27 @@
         max-height: 320px;
       }
     }
+    .link-bar {
+      display: flex;
+      justify-content: flex-start;
+      margin: 0.4rem 0 0.2rem 0;
+    }
+    .link-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      background: #f3f0ff;
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .link-button:hover {
+      background: #e5dbff;
+    }
   </style>
 </head>
 <body>
@@ -252,6 +273,10 @@
           <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Pagos acumulados</div>
         </div>
       </div>
+    </div>
+
+    <div class="link-bar">
+      <a class="link-button" href="sep/dashboard_montos_socios.html" target="_blank" rel="noopener">Ver dashboard de montos de socios</a>
     </div>
 
     <div class="toolbar">
