@@ -725,8 +725,8 @@ def main():
     </div>
 
     <div class="link-bar">
-      <a class="link-button" href="../odoo/dashboard_odoo_vs_mora.html" target="_blank" rel="noopener">
-        Ver dashboard Odoo vs mora
+      <a class="link-button" href="https://adonisgomez.github.io/dashboard-colmed/" target="_blank" rel="noopener">
+        Ver dashboard COLMED
       </a>
     </div>
 
