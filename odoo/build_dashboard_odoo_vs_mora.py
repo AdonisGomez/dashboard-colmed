@@ -306,7 +306,7 @@ def main() -> None:
       display: flex;
       justify-content: flex-start;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.6rem;
       margin: 0.75rem 0;
       padding: 0.75rem 1rem;
       background: var(--surface);
@@ -316,16 +316,21 @@ def main() -> None:
       flex-wrap: wrap;
     }}
     .search-box {{
-      flex: 1;
-      min-width: 220px;
+      flex: 0 1 420px;
+      min-width: 280px;
     }}
     .search-box input {{
       width: 100%;
-      padding: 0.6rem 0.9rem;
-      border-radius: 8px;
+      padding: 0.55rem 0.85rem;
+      border-radius: 999px;
       border: 2px solid var(--border);
-      background: var(--surface-alt);
+      background: #fff;
       font-size: 0.9rem;
+    }}
+    .search-box input:focus {{
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,92,231,0.15);
     }}
     .filter-select {{
       display: flex;
@@ -333,16 +338,21 @@ def main() -> None:
       gap: 0.4rem;
     }}
     .filter-select label {{
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--muted);
       font-weight: 600;
     }}
     .filter-select select {{
-      padding: 0.45rem 0.75rem;
-      border-radius: 8px;
+      padding: 0.5rem 0.8rem;
+      border-radius: 999px;
       border: 2px solid var(--border);
-      background: var(--surface-alt);
+      background: #fff;
       font-size: 0.85rem;
+    }}
+    .filter-select select:focus {{
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,92,231,0.12);
     }}
     .chips {{
       display: flex;
@@ -508,9 +518,6 @@ def main() -> None:
     </div>
 
     <div class="toolbar">
-      <div class="search-box">
-        <input id="search-input" type="text" placeholder="🔍 Buscar por código o nombre de socio..." />
-      </div>
       <div class="filter-select hidden-filter">
         <label for="clasif-select">Clasificación:</label>
         <select id="clasif-select">
@@ -573,6 +580,9 @@ def main() -> None:
       <div class="filter-select hidden-filter" id="wrap-vista-semana">
         <label for="vista-semana">Semana:</label>
         <select id="vista-semana"><option value="">—</option></select>
+      </div>
+      <div class="search-box">
+        <input id="search-input" type="text" placeholder="Buscar socio (código o nombre)..." />
       </div>
     </div>
 
