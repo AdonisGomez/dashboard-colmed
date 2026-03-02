@@ -795,61 +795,48 @@ def main() -> None:
       const selMes = document.getElementById('vista-mes');
       const selDia = document.getElementById('vista-dia');
       const selSemana = document.getElementById('vista-semana');
-      const savAnio = selAnio.value;
-      const savMes = selMes.value;
-      const savDia = selDia.value;
-
-      selAnio.innerHTML = '<option value="">—</option>';
+      // Año
+      selAnio.innerHTML = '<option value=\"\">—</option>';
       anios.forEach(a => {{
         const opt = document.createElement('option');
         opt.value = String(a);
         opt.textContent = String(a);
         selAnio.appendChild(opt);
       }});
-      if (savAnio) selAnio.value = savAnio;
-      if (!selAnio.value && anios.length) selAnio.value = String(anios[anios.length - 1]);
+      if (anios.length) selAnio.value = String(anios[anios.length - 1]);
 
       const anioSel = selAnio.value ? Number(selAnio.value) : null;
-      const meses = anioSel == null ? [] : [...new Set(PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel).map(p => p.MES))].filter(m => m != null).sort((a,b)=>a-b);
-      selMes.innerHTML = '<option value="">—</option>';
+
+      // Mes
+      const meses = anioSel == null
+        ? []
+        : [...new Set(PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel).map(p => p.MES))]
+            .filter(m => m != null)
+            .sort((a,b)=>a-b);
+      selMes.innerHTML = '<option value=\"\">—</option>';
       meses.forEach(m => {{
         const opt = document.createElement('option');
         opt.value = String(m);
         opt.textContent = String(m).padStart(2,'0');
         selMes.appendChild(opt);
       }});
-      if (savMes) selMes.value = savMes;
-      if (!selMes.value && meses.length) selMes.value = String(meses[meses.length - 1]);
+      if (meses.length) selMes.value = String(meses[meses.length - 1]);
 
       const mesSel = selMes.value ? Number(selMes.value) : null;
-      const semanaSel = selSemana.value || '';
-      let diasFiltro = (anioSel == null || mesSel == null) ? [] : PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel && Number(p.MES) === mesSel);
-      if (semanaSel) diasFiltro = diasFiltro.filter(p => (p.SEMANA || '').toString() === semanaSel);
+
+      // Día
+      let diasFiltro = (anioSel == null || mesSel == null)
+        ? []
+        : PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel && Number(p.MES) === mesSel);
       const dias = [...new Set(diasFiltro.map(p => p.DIA))].filter(d => d != null).sort((a,b)=>a-b);
-      selDia.innerHTML = '<option value="">—</option>';
+      selDia.innerHTML = '<option value=\"\">—</option>';
       dias.forEach(d => {{
         const opt = document.createElement('option');
         opt.value = String(d);
         opt.textContent = String(d).padStart(2,'0');
         selDia.appendChild(opt);
       }});
-      if (savDia) selDia.value = savDia;
-      // Por defecto dejamos el día vacío para que el KPI sea mensual (si el usuario quiere día, lo elige).
-      if (savDia === '') selDia.value = '';
-
-      let semanas = [...new Set(PAGOS_DIA.map(p => (p.SEMANA || '').toString()).filter(s => s))];
-      if (anioSel != null) {{
-        const pref = String(anioSel) + '-W';
-        semanas = semanas.filter(s => s.startsWith(pref));
-      }}
-      semanas.sort();
-      selSemana.innerHTML = '<option value="">—</option>';
-      semanas.forEach(s => {{
-        const opt = document.createElement('option');
-        opt.value = s;
-        opt.textContent = s;
-        selSemana.appendChild(opt);
-      }});
+      // Por defecto dejamos el día vacío (KPI mensual); el usuario elige día si lo necesita.
     }}
 
     function updateKpisPorVista() {{
