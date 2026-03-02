@@ -149,7 +149,20 @@ def main() -> None:
         pagos_mes_list = []
 
     # Información por socio: primer pago y cuota mensual estimada (para nuevos socios)
+    # Información por socio (para provisión esperada dinámica por mes/día)
     socios_info_list: list[dict] = []
+    try:
+        # Mapeo cuota por socio ya calculado en cuota_por_socio
+        primer_pago_dt = pd.to_datetime(df.get("Primer_pago"), errors="coerce")
+        info_df = df[["Codigo_socio", "Estado_socio_odoo_ultimo"]].copy()
+        info_df["Primer_pago_dt"] = primer_pago_dt.dt.strftime("%Y-%m-%d")
+        info_df["Cuota_mensual_estimada"] = info_df["Codigo_socio"].map(
+            lambda c: float(cuota_por_socio.get(int(c), 0.0)) if pd.notna(c) else 0.0
+        )
+        info_df["Estado_socio_odoo_ultimo"] = info_df["Estado_socio_odoo_ultimo"].fillna("").astype(str)
+        socios_info_list = info_df.to_dict(orient="records")
+    except Exception:
+        socios_info_list = []
 
     # Pagos por día (para vista por día específico y acumulado hasta fecha)
     pagos_dia_list: list[dict] = []
@@ -550,21 +563,7 @@ def main() -> None:
           <option value="Sin rango">Sin rango</option>
         </select>
       </div>
-      <div class="filter-select hidden-filter">
-        <label for="vista-select">Vista:</label>
-        <select id="vista-select">
-          <option value="acumulado">Acumulado por mes</option>
-          <option value="provisionado">Provisionado por mes</option>
-          <option value="dia">Por día específico</option>
-          <option value="semana">Por semana</option>
-        </select>
-      </div>
-      <div class="filter-select hidden-filter" id="wrap-periodo">
-        <label for="periodo-select">Periodo (año-mes):</label>
-        <select id="periodo-select">
-          <option value="">Todos</option>
-        </select>
-      </div>
+      <!-- Vista/Periodo removidos: solo filtros de Año/Mes/Día -->
       <div class="filter-select" id="wrap-vista-dia">
         <label for="vista-anio">Año:</label>
         <select id="vista-anio"><option value="">—</option></select>
@@ -586,14 +585,14 @@ def main() -> None:
       </div>
     </div>
 
-    <div class="chips" id="chips-resumen"></div>
+    <!-- chips ocultos (no se muestran en este dashboard) -->
   </div>
 
   <script>
     const DETALLE = {detalle_records};
-    const RESUMEN = {resumen_records};
     const PAGOS_MES = {pagos_mes_json};
     const PAGOS_DIA = {pagos_dia_json};
+    const SOCIOS_INFO = {socios_info_json};
     const PROVISION_MENSUAL = {total_provision};
     const TOTAL_SOCIOS_CRUCE = {total_socios};
     const CARTERA_INICIAL = {total_mora};
@@ -617,6 +616,27 @@ def main() -> None:
     }}
 
     function updateNuevosSocios(periodo) {{ /* KPI desactivado por ahora */ }}
+
+    function endOfMonthDateStr(anio, mes) {{
+      const d = new Date(Number(anio), Number(mes), 0);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return `${{y}}-${{m}}-${{day}}`;
+    }}
+
+    function calcProvisionEsperadaMensual(fechaStr) {{
+      // Provisión esperada del mes: suma de cuotas mensuales de socios "vigentes" a esa fecha (por primer pago).
+      let total = 0;
+      SOCIOS_INFO.forEach(s => {{
+        const cuota = Number(s.Cuota_mensual_estimada || 0);
+        if (!cuota) return;
+        const fp = String(s.Primer_pago_dt || '').slice(0,10);
+        if (!fp) return;
+        if (fp <= fechaStr) total += cuota;
+      }});
+      return total;
+    }}
 
     function getFilteredRows() {{
       const search = document.getElementById('search-input').value.trim().toLowerCase();
@@ -655,7 +675,18 @@ def main() -> None:
       const totalResto = Math.max(totalMora - totalPagado, 0);
       document.getElementById('kpi-socios').textContent = totalSocios.toLocaleString('es-PE');
       document.getElementById('kpi-mora').textContent = formatMoney(totalMora);
-      document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
+      // Provisión esperada dinámica: depende de socios vigentes en la fecha seleccionada
+      const anioSel = document.getElementById('vista-anio')?.value || '';
+      const mesSel = document.getElementById('vista-mes')?.value || '';
+      const diaSel = document.getElementById('vista-dia')?.value || '';
+      let prov = PROVISION_MENSUAL;
+      if (anioSel && mesSel) {{
+        const fechaCorte = diaSel
+          ? `${{anioSel}}-${{mesSel.padStart(2,'0')}}-${{diaSel.padStart(2,'0')}}`
+          : endOfMonthDateStr(anioSel, mesSel);
+        prov = calcProvisionEsperadaMensual(fechaCorte);
+      }}
+      document.getElementById('kpi-prov').textContent = formatMoney(prov);
       // Sin periodo (o vista que no usa periodo): totales de los socios filtrados
       if (!selectedPeriodo || selectedPeriodo === '__todo__') {{
         document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos acumulados (total histórico)';
@@ -669,40 +700,25 @@ def main() -> None:
       }}
     }}
 
-    function renderChipsResumen() {{
-      const cont = document.getElementById('chips-resumen');
-      cont.innerHTML = '';
-      RESUMEN.forEach(r => {{
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip';
-        if (r.Clasificacion === 'Mora_y_paga_en_Odoo' || r.Clasificacion === 'Al_dia_en_mora_y_paga_en_Odoo') {{
-          chip.classList.add('paga');
-        }} else if (r.Clasificacion === 'Sigue_en_mora') {{
-          chip.classList.add('mora');
-        }} else {{
-          chip.classList.add('info');
-        }}
-        if (selectedClasif === r.Clasificacion) chip.classList.add('active');
-        chip.dataset.clasif = r.Clasificacion;
-        const descMap = {{
-          'Mora_y_paga_en_Odoo': 'Mora y paga en Odoo',
-          'Sigue_en_mora': 'Sigue en mora',
-          'Al_dia_en_mora_y_paga_en_Odoo': 'Al día en mora y paga en Odoo',
-          'Solo_en_Odoo': 'Solo en Odoo',
-          'Sin_informacion_clara': 'Sin información clara',
-        }};
-        const desc = descMap[r.Clasificacion] || r.Clasificacion;
-        chip.textContent = `${{desc}} · ${{r.Socios}} socios · ${{formatMoney(r.Monto_mora)}} mora · ${{formatMoney(r.Monto_pagado)}} pagado`;
-        chip.addEventListener('click', () => {{
-          selectedClasif = selectedClasif === r.Clasificacion ? '' : r.Clasificacion;
-          document.getElementById('clasif-select').value = selectedClasif;
-          populateEstadoOdooSelect();
-          renderChipsResumen();
-          renderTable();
-        }});
-        cont.appendChild(chip);
+    function endOfMonthDateStr(anio, mes) {{
+      const d = new Date(Number(anio), Number(mes), 0);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return `${{y}}-${{m}}-${{day}}`;
+    }}
+
+    function calcProvisionEsperadaMensual(fechaStr) {{
+      // Suma de cuota mensual estimada de socios con Primer_pago_dt <= fechaStr
+      let total = 0;
+      SOCIOS_INFO.forEach(s => {{
+        const cuota = Number(s.Cuota_mensual_estimada || 0);
+        if (!cuota) return;
+        const fp = String(s.Primer_pago_dt || '').slice(0,10);
+        if (!fp) return;
+        if (fp <= fechaStr) total += cuota;
       }});
+      return total;
     }}
 
     function populateAnioSelect() {{
@@ -748,31 +764,7 @@ def main() -> None:
       }}
     }}
 
-    function populatePeriodoSelect() {{
-      const select = document.getElementById('periodo-select');
-      select.innerHTML = '<option value="">— Seleccione mes —</option>';
-      const vistos = new Set();
-      const mesesOrdenados = [...PAGOS_MES].sort((a,b) => a.periodo.localeCompare(b.periodo));
-      mesesOrdenados.forEach(m => {{
-        if (!vistos.has(m.periodo)) {{
-          vistos.add(m.periodo);
-          const opt = document.createElement('option');
-          opt.value = m.periodo;
-          opt.textContent = m.periodo;
-          select.appendChild(opt);
-        }}
-      }});
-      const optTodo = document.createElement('option');
-      optTodo.value = '__todo__';
-      optTodo.textContent = 'Todos (histórico)';
-      select.appendChild(optTodo);
-      // Por defecto: último mes con datos (para comparar provisión mensual vs pagos de ese mes)
-      if (mesesOrdenados.length > 0) {{
-        const ultimo = mesesOrdenados[mesesOrdenados.length - 1].periodo;
-        select.value = ultimo;
-        selectedPeriodo = ultimo;
-      }}
-    }}
+    // populatePeriodoSelect removido (no usamos periodo-select)
 
     function toggleFiltrosVista() {{
       const wrapPeriodo = document.getElementById('wrap-periodo');
@@ -862,132 +854,70 @@ def main() -> None:
           return;
         }}
         const fechaStr = `${{anio}}-${{mes.padStart(2,'0')}}-${{dia.padStart(2,'0')}}`;
+        const provMes = calcProvisionEsperadaMensual(fechaStr) * ratioMora;
+        const provDia = provMes / 30;
         const filaDia = PAGOS_DIA.find(p => p.fecha_str === fechaStr);
         const pagosDelDiaGlobal = filaDia ? Number(filaDia.Monto_pagado_dia || 0) : 0;
         const pagosDelDia = pagosDelDiaGlobal * ratioMora;
-        const provisionDia = PROVISION_MENSUAL / 30;
         let acumulado = 0;
         PAGOS_DIA.forEach(p => {{
           if ((p.fecha_str || '') <= fechaStr) acumulado += Number(p.Monto_pagado_dia || 0);
         }});
         const acumuladoEscalado = acumulado * ratioMora;
         const nuevoSaldo = Math.max(totalMoraFilt - acumuladoEscalado, 0);
-        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del día (meta)';
-        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del día';
-        document.getElementById('kpi-prov').textContent = formatMoney(provisionDia);
+        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión esperada (día)';
+        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Provisión real (pagos del día)';
+        document.getElementById('kpi-prov').textContent = formatMoney(provDia);
         document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelDia);
         document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
-        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Saldo cartera (acum. hasta fecha)';
+        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo de cartera (al día)';
         return;
       }}
 
-      if (vista === 'semana') {{
-        const anio = document.getElementById('vista-anio').value;
-        const semana = document.getElementById('vista-semana').value;
-        if (!anio || !semana) {{
-          updateKpis();
-          return;
-        }}
-        const semanaStr = semana;
-        const diasSemana = PAGOS_DIA.filter(p => (p.SEMANA || '').toString() === semanaStr);
-        const pagosSemanaGlobal = diasSemana.reduce((s, p) => s + Number(p.Monto_pagado_dia || 0), 0);
-        const pagosSemana = pagosSemanaGlobal * ratioMora;
-
-        let fechaCorte = '';
-        diasSemana.forEach(p => {{
-          const f = (p.fecha_str || '').toString();
-          if (f && f > fechaCorte) fechaCorte = f;
-        }});
-        let acumulado = 0;
-        PAGOS_DIA.forEach(p => {{
-          if ((p.fecha_str || '') <= fechaCorte) acumulado += Number(p.Monto_pagado_dia || 0);
-        }});
-        const provisionSemana = PROVISION_MENSUAL / 4;
-        const acumuladoEscalado = acumulado * ratioMora;
-        const nuevoSaldo = Math.max(totalMoraFilt - acumuladoEscalado, 0);
-        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión de la semana (aprox.)';
-        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos de la semana';
-        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Saldo cartera (acum. fin de semana)';
-        document.getElementById('kpi-prov').textContent = formatMoney(provisionSemana);
-        document.getElementById('kpi-odoo').textContent = formatMoney(pagosSemana);
-        document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
-        return;
-      }}
-
-      if (vista === 'provisionado') {{
-        const periodo = selectedPeriodo || document.getElementById('periodo-select').value;
-        if (!periodo || periodo === '__todo__') {{
-          updateKpis();
-          return;
-        }}
-        const [anioStr, mesStr] = periodo.split('-');
-        const anioSel = Number(anioStr);
-        const mesSel = Number(mesStr);
-        let pagosDelMes = 0;
-        PAGOS_MES.forEach(p => {{
-          if (Number(p.ANIO) === anioSel && Number(p.MES) === mesSel) pagosDelMes += Number(p.Monto_pagado_mes || 0);
-        }});
-        let pagosAcum = 0;
-        PAGOS_MES.forEach(p => {{
-          const a = Number(p.ANIO || 0);
-          const m = Number(p.MES || 0);
-          if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
-        }});
-        const pagosDelMesEsc = pagosDelMes * ratioMora;
-        const pagosAcumEsc = pagosAcum * ratioMora;
-        const nuevoSaldo = Math.max(totalMoraFilt - pagosAcumEsc, 0);
-        document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión del mes';
-        document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Pagos del mes';
-        document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo cartera (acum. al mes)';
-        document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
-        document.getElementById('kpi-odoo').textContent = formatMoney(pagosDelMesEsc);
-        document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
-        updateNuevosSocios(periodo);
-        return;
-      }}
-
-      // vista === 'acumulado'
-      document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión virtual mensual';
-      const periodoSelect = document.getElementById('periodo-select');
-      const periodo = (periodoSelect && periodoSelect.value) || selectedPeriodo || '';
-      if (!periodo) {{
-        selectedPeriodo = '';
+      // Vista mensual (año+mes): provisión esperada del mes y provisión real acumulada a la fecha.
+      const anio = document.getElementById('vista-anio').value;
+      const mes = document.getElementById('vista-mes').value;
+      if (!anio || !mes) {{
         updateKpis();
         return;
       }}
-      selectedPeriodo = periodo;
+      const fechaCorte = endOfMonthDateStr(anio, mes);
+      const provMes = calcProvisionEsperadaMensual(fechaCorte) * ratioMora;
+
+      // Provisión real acumulada "a la fecha" (hasta el mes seleccionado)
       let pagosAcum = 0;
-      let labelOdoo = 'Pagos acumulados (Odoo)';
-      let labelResto = 'Nuevo saldo cartera (estimado)';
-      if (periodo === '__todo__') {{
-        // Total histórico: suma de todos los meses
-        PAGOS_MES.forEach(p => {{ pagosAcum += Number(p.Monto_pagado_mes || 0); }});
-        labelOdoo = 'Pagos acumulados (total histórico)';
-        labelResto = 'Nuevo saldo (cartera − total cobrado)';
-      }} else {{
-        const [anioStr, mesStr] = periodo.split('-');
-        const anioSel = Number(anioStr);
-        const mesSel = Number(mesStr);
-        PAGOS_MES.forEach(p => {{
-          const a = Number(p.ANIO || 0);
-          const m = Number(p.MES || 0);
-          if (a < anioSel || (a === anioSel && m <= mesSel)) pagosAcum += Number(p.Monto_pagado_mes || 0);
-        }});
-        labelOdoo = 'Pagos acumulados (hasta ' + periodo + ')';
-        labelResto = 'Nuevo saldo al ' + periodo;
-      }}
+      PAGOS_MES.forEach(p => {{
+        const a = Number(p.ANIO || 0);
+        const m = Number(p.MES || 0);
+        if (a < Number(anio) || (a === Number(anio) && m <= Number(mes))) pagosAcum += Number(p.Monto_pagado_mes || 0);
+      }});
       const pagosAcumEsc = pagosAcum * ratioMora;
-      const nuevoSaldo = Math.max(totalMoraFilt - pagosAcumEsc, 0);
-      document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = labelOdoo;
-      document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = labelResto;
+
+      // Mora acumulada por falta de pago: sum(max(PV_mes - PR_mes, 0)) hasta el corte
+      let moraNuevaAcum = 0;
+      const periodoCorte = `${{anio}}-${{String(mes).padStart(2,'0')}}`;
+      const mesesOrdenados = [...PAGOS_MES].sort((a,b) => a.periodo.localeCompare(b.periodo));
+      mesesOrdenados.forEach(p => {{
+        const per = String(p.periodo || '');
+        if (!per || per > periodoCorte) return;
+        const [aa, mm] = per.split('-');
+        const fechaMes = endOfMonthDateStr(aa, mm);
+        const pv = calcProvisionEsperadaMensual(fechaMes) * ratioMora;
+        const pr = Number(p.Monto_pagado_mes || 0) * ratioMora;
+        moraNuevaAcum += Math.max(pv - pr, 0);
+      }});
+
+      const carteraProyectada = Math.max(totalMoraFilt - pagosAcumEsc + moraNuevaAcum, 0);
+      document.querySelector('#kpi-prov').closest('.card').querySelector('.label').textContent = 'Provisión esperada (mes)';
+      document.querySelector('#kpi-odoo').closest('.card').querySelector('.label').textContent = 'Provisión real (pagos a la fecha)';
+      document.querySelector('#kpi-resto').closest('.card').querySelector('.label').textContent = 'Nuevo saldo de cartera (al corte)';
       const hintOdoo = document.getElementById('kpi-odoo-hint');
       const hintResto = document.getElementById('kpi-resto-hint');
-      if (hintOdoo) hintOdoo.textContent = periodo === '__todo__' ? 'todos los meses' : 'hasta el mes seleccionado';
-      if (hintResto) hintResto.textContent = 'Cartera inicial − Pagos acumulados';
-      document.getElementById('kpi-prov').textContent = formatMoney(PROVISION_MENSUAL);
-      document.getElementById('kpi-odoo').textContent = formatMoney(pagosAcum);
-      document.getElementById('kpi-resto').textContent = formatMoney(nuevoSaldo);
-      updateNuevosSocios(periodo);
+      if (hintOdoo) hintOdoo.textContent = 'hasta el mes seleccionado';
+      if (hintResto) hintResto.textContent = 'Cartera inicial − Pagos + Mora no pagada';
+      document.getElementById('kpi-prov').textContent = formatMoney(provMes);
+      document.getElementById('kpi-odoo').textContent = formatMoney(pagosAcumEsc);
+      document.getElementById('kpi-resto').textContent = formatMoney(carteraProyectada);
     }}
 
     function updateKpisPeriodo() {{
@@ -995,41 +925,9 @@ def main() -> None:
     }}
 
     function renderTable() {{
-      const tbody = document.querySelector('#tabla-socios tbody');
-      const rows = getFilteredRows();
-      tbody.innerHTML = '';
-      rows.forEach(r => {{
-        const tr = document.createElement('tr');
-        const estado = String(r.Estado_socio_odoo_ultimo || '').toLowerCase();
-        const clasif = r.Clasificacion || '';
-        let badgeClas = '';
-        if (clasif === 'Mora_y_paga_en_Odoo') badgeClas = '<span class="badge paga">Mora y paga</span>';
-        else if (clasif === 'Sigue_en_mora') badgeClas = '<span class="badge mora">Sigue en mora</span>';
-        else if (clasif === 'Solo_en_Odoo') badgeClas = '<span class="badge info">Solo Odoo</span>';
-        else if (clasif === 'Al_dia_en_mora_y_paga_en_Odoo') badgeClas = '<span class="badge paga">Al día + paga</span>';
-        else if (clasif) badgeClas = `<span class="badge info">${{clasif}}</span>`;
-
-        let badgeEstado = '';
-        if (estado === 'active' || estado === 'confirm') badgeEstado = `<span class="badge paga">${{estado}}</span>`;
-        else if (estado === 'expired' || estado === 'mora') badgeEstado = `<span class="badge mora">${{estado}}</span>`;
-        else if (estado) badgeEstado = `<span class="badge info">${{estado}}</span>`;
-
-        tr.innerHTML = `
-          <td>${{r.Codigo_socio ?? ''}}</td>
-          <td>${{r.Nombre_socio ?? ''}}</td>
-          <td>${{r.CONSUMIDOR ?? ''}}</td>
-          <td class="num">${{formatMoney(r.Monto_mora)}}</td>
-          <td class="num">${{formatMoney(r.Monto_pagado_total)}}</td>
-          <td class="num">${{formatMoney(r.Monto_mora_restante)}}</td>
-          <td class="num">${{r.Numero_pagos ?? ''}}</td>
-          <td>${{r.Ultimo_pago || ''}}</td>
-          <td>${{badgeEstado}}</td>
-          <td>${{r.Rango_dias_por_cuotas || ''}}</td>
-          <td>${{badgeClas}}</td>
-        `;
-        tbody.appendChild(tr);
-      }});
+      // Tabla eliminada en este dashboard; solo actualizamos KPIs.
       updateKpis();
+      updateKpisPorVista();
     }}
 
     document.getElementById('search-input').addEventListener('input', () => {{
@@ -1038,7 +936,6 @@ def main() -> None:
     document.getElementById('clasif-select').addEventListener('change', e => {{
       selectedClasif = e.target.value;
       populateEstadoOdooSelect();
-      renderChipsResumen();
       renderTable();
     }});
     document.getElementById('estado-odoo-select').addEventListener('change', e => {{
@@ -1053,20 +950,9 @@ def main() -> None:
       selectedRango = e.target.value;
       renderTable();
     }});
-    document.getElementById('periodo-select').addEventListener('change', e => {{
-      selectedPeriodo = e.target.value;
-      renderTable();
-      updateKpisPorVista();
-    }});
+    // periodo-select ya no se usa
 
-    document.getElementById('vista-select').addEventListener('change', e => {{
-      selectedVista = e.target.value;
-      toggleFiltrosVista();
-      if (selectedVista === 'dia' || selectedVista === 'semana') {{
-        populateVistaDiaSelects();
-      }}
-      updateKpisPorVista();
-    }});
+    // vista-select ya no se usa
 
     document.getElementById('vista-anio').addEventListener('change', () => {{
       selectedVistaAnio = document.getElementById('vista-anio').value;
@@ -1089,12 +975,9 @@ def main() -> None:
 
     populateAnioSelect();
     populateEstadoOdooSelect();
-    populatePeriodoSelect();
     toggleFiltrosVista();
     if (PAGOS_DIA && PAGOS_DIA.length) populateVistaDiaSelects();
-    renderChipsResumen();
     renderTable();
-    updateKpisPorVista();
   </script>
 </body>
 </html>
