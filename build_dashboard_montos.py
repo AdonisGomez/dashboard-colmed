@@ -436,6 +436,27 @@ def main():
       margin-bottom: 0.5rem;
       text-align: left;
     }}
+    .link-bar {{
+      display: flex;
+      justify-content: flex-end;
+      margin: 0.4rem 0 0.2rem 0;
+    }}
+    .link-button {{
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      background: #f3f0ff;
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-decoration: none;
+      cursor: pointer;
+    }}
+    .link-button:hover {{
+      background: #e5dbff;
+    }}
     .block-title {{
       font-size: 1.0rem;
       font-weight: 700;
@@ -662,6 +683,12 @@ def main():
           <div id="kpi-monto-total" class="value" style="font-size:1.2rem;">$ {total_monto:,.2f}</div>
         </div>
       </div>
+    </div>
+
+    <div class="link-bar">
+      <a class="link-button" href="../odoo/dashboard_odoo_vs_mora.html" target="_blank" rel="noopener">
+        Ver dashboard Odoo vs mora
+      </a>
     </div>
 
     <div class="toolbar toolbar-top" style="margin-bottom:0.75rem;">
