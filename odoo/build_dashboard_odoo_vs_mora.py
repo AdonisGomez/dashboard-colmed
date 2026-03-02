@@ -322,7 +322,20 @@ def main() -> None:
     }}
     .card.kpi {{
       flex: 1 1 0;
-      min-width: 180px;
+      min-width: 210px;
+    }}
+    .kpi-main-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }}
+    .kpi-main-row .label {{
+      white-space: normal;
+    }}
+    .kpi-main-row .value {{
+      white-space: nowrap;
+      margin-left: auto;
     }}
     .label {{
       font-size: 0.75rem;
@@ -557,29 +570,41 @@ def main() -> None:
       <h1>DASHBOARD COLMED</h1>
       <div class="kpi-row">
         <div class="card kpi">
-          <div class="label">Socios totales</div>
-          <div class="value" id="kpi-socios">{total_socios_db:,}</div>
+          <div class="kpi-main-row">
+            <div class="label">Socios totales</div>
+            <div class="value" id="kpi-socios">{total_socios_db:,}</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Socios con mora</div>
-          <div class="value" id="kpi-socios-mora">{total_socios_mora:,}</div>
+          <div class="kpi-main-row">
+            <div class="label">Socios con mora</div>
+            <div class="value" id="kpi-socios-mora">{total_socios_mora:,}</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Cartera inicial hasta dic 2026</div>
-          <div class="value" id="kpi-mora">$ {total_mora:,.2f}</div>
+          <div class="kpi-main-row">
+            <div class="label">Cartera inicial hasta dic 2026</div>
+            <div class="value" id="kpi-mora">$ {total_mora:,.2f}</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Provisión esperada</div>
-          <div class="value" id="kpi-prov">$ {total_provision:,.2f}</div>
+          <div class="kpi-main-row">
+            <div class="label">Provisión esperada (día)</div>
+            <div class="value" id="kpi-prov">$ {total_provision:,.2f}</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Provisión real (pagos a la fecha)</div>
-          <div class="value" id="kpi-odoo">$ {total_pagado:,.2f}</div>
+          <div class="kpi-main-row">
+            <div class="label">Provisión real (pagos del día)</div>
+            <div class="value" id="kpi-odoo">$ {total_pagado:,.2f}</div>
+          </div>
           <div class="label kpi-hint" id="kpi-odoo-hint">según periodo elegido abajo</div>
         </div>
         <div class="card kpi">
-          <div class="label">Nuevo saldo de cartera</div>
-          <div class="value" id="kpi-resto">$ {total_nuevo_saldo:,.2f}</div>
+          <div class="kpi-main-row">
+            <div class="label">Nuevo saldo de cartera (al día)</div>
+            <div class="value" id="kpi-resto">$ {total_nuevo_saldo:,.2f}</div>
+          </div>
           <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Provisión real</div>
         </div>
       </div>

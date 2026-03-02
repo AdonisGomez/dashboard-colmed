@@ -63,7 +63,20 @@
     }
     .card.kpi {
       flex: 1 1 0;
-      min-width: 180px;
+      min-width: 210px;
+    }
+    .kpi-main-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .kpi-main-row .label {
+      white-space: normal;
+    }
+    .kpi-main-row .value {
+      white-space: nowrap;
+      margin-left: auto;
     }
     .label {
       font-size: 0.75rem;
@@ -298,29 +311,41 @@
       <h1>DASHBOARD COLMED</h1>
       <div class="kpi-row">
         <div class="card kpi">
-          <div class="label">Socios totales</div>
-          <div class="value" id="kpi-socios">6,638</div>
+          <div class="kpi-main-row">
+            <div class="label">Socios totales</div>
+            <div class="value" id="kpi-socios">6,638</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Socios con mora</div>
-          <div class="value" id="kpi-socios-mora">1,663</div>
+          <div class="kpi-main-row">
+            <div class="label">Socios con mora</div>
+            <div class="value" id="kpi-socios-mora">1,663</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Cartera inicial hasta dic 2026</div>
-          <div class="value" id="kpi-mora">$ 223,544.51</div>
+          <div class="kpi-main-row">
+            <div class="label">Cartera inicial hasta dic 2026</div>
+            <div class="value" id="kpi-mora">$ 223,544.51</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Provisión esperada</div>
-          <div class="value" id="kpi-prov">$ 41,960.38</div>
+          <div class="kpi-main-row">
+            <div class="label">Provisión esperada (día)</div>
+            <div class="value" id="kpi-prov">$ 41,960.38</div>
+          </div>
         </div>
         <div class="card kpi">
-          <div class="label">Provisión real (pagos a la fecha)</div>
-          <div class="value" id="kpi-odoo">$ 37,002.67</div>
+          <div class="kpi-main-row">
+            <div class="label">Provisión real (pagos del día)</div>
+            <div class="value" id="kpi-odoo">$ 37,002.67</div>
+          </div>
           <div class="label kpi-hint" id="kpi-odoo-hint">según periodo elegido abajo</div>
         </div>
         <div class="card kpi">
-          <div class="label">Nuevo saldo de cartera</div>
-          <div class="value" id="kpi-resto">$ 186,541.84</div>
+          <div class="kpi-main-row">
+            <div class="label">Nuevo saldo de cartera (al día)</div>
+            <div class="value" id="kpi-resto">$ 186,541.84</div>
+          </div>
           <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Provisión real</div>
         </div>
       </div>
