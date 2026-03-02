@@ -342,9 +342,11 @@ def main():
       flex-wrap: nowrap;
       gap: 0.75rem;
       margin-bottom: 0.75rem;
-      overflow-x: auto;
+      overflow-x: visible;
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
+      align-items: flex-start;
+      justify-content: flex-start;
     }}
     .cards {{
       display: flex;
@@ -356,6 +358,41 @@ def main():
     }}
     .cards-row .cards {{
       margin-bottom: 0;
+    }}
+    #montos-por-anio {{
+      display: flex;
+      flex-direction: column;
+      max-height: 400px;
+      overflow-y: auto;
+      flex: 0 0 220px;
+      min-width: 220px;
+    }}
+    #range-cards {{
+      display: flex;
+      flex-direction: column;
+      max-height: 400px;
+      overflow-y: auto;
+      flex: 0 0 360px;
+      min-width: 320px;
+    }}
+    #socios-panel {{
+      flex: 1 1 auto;
+      min-width: 520px;
+      align-self: stretch;
+    }}
+    #socios-panel .table-container {{
+      max-height: 400px;
+    }}
+    @media (max-width: 900px) {{
+      .cards-row {{
+        flex-direction: column;
+      }}
+      #montos-por-anio,
+      #range-cards,
+      #socios-panel {{
+        flex: 1 1 auto;
+        min-width: 0;
+      }}
     }}
     .cards::-webkit-scrollbar {{
       height: 6px;
@@ -373,10 +410,12 @@ def main():
       min-width: 160px;
     }}
     #montos-por-anio .card {{
-      min-width: 140px;
+      min-width: 0;
     }}
     #range-cards .card {{
       padding: 0.85rem 1rem;
+      width: 100%;
+      min-width: 0;
     }}
     #range-cards .card .value {{
       font-size: 1.3rem;
@@ -716,7 +755,6 @@ def main():
           <option value="de 61 a 90">de 61 a 90</option>
           <option value="de 91 a 120">de 91 a 120</option>
           <option value="mas de 121 días">mas de 121 días</option>
-          <option value="Sin rango">Sin rango</option>
         </select>
       </div>
     </div>
@@ -725,9 +763,7 @@ def main():
     <div class="cards-row">
       <div id="montos-por-anio" class="cards"></div>
       <div id="range-cards" class="cards"></div>
-    </div>
-
-    <div class="panel" style="margin-top:0.75rem;">
+      <div id="socios-panel" class="panel">
         <div class="table-container">
           <table id="tabla-socios">
             <thead>
@@ -768,6 +804,19 @@ def main():
       return '$ ' + n.toLocaleString('es-PE', {{ minimumFractionDigits: 2, maximumFractionDigits: 2 }});
     }}
 
+    const TOTAL_CARTERA = DETALLE.reduce(
+      (sum, r) => sum + Number(r.Monto_total || r["Monto total"] || 0),
+      0
+    );
+
+    function isVisibleRow(r) {{
+      const montoTotal = Number(r.Monto_total || r["Monto total"] || 0);
+      const rango = r.Rango_dias_por_cuotas;
+      if (!rango || rango === 'Sin rango') return false;
+      if (!montoTotal) return false;
+      return true;
+    }}
+
     /** Obtiene los datos aplicando todos los filtros en orden: año, mes, rango, búsqueda. */
     function getFilteredData() {{
       const filterYear = selectedYear || document.getElementById('year-select').value;
@@ -775,7 +824,7 @@ def main():
       const filterRange = selectedRange || document.getElementById('filter-select').value;
       const search = document.getElementById('search-input').value.trim();
 
-      let rows = DETALLE.slice();
+      let rows = DETALLE.filter(isVisibleRow);
 
       if (filterYear) {{
         rows = rows.filter(r => {{
@@ -801,15 +850,17 @@ def main():
 
     function updateKpiTotal() {{
       const search = document.getElementById('search-input').value.trim();
-      let rows;
+      let total;
       if (search) {{
-        // Con socio seleccionado: mostrar el total de ese cliente (todos sus registros)
         const s = search.toLowerCase();
-        rows = DETALLE.filter(r => String(r.Codigo_socio ?? '').toLowerCase().includes(s));
+        const rows = DETALLE.filter(r => String(r.Codigo_socio ?? '').toLowerCase().includes(s));
+        total = rows.reduce(
+          (sum, r) => sum + Number(r.Monto_total || r["Monto total"] || 0),
+          0
+        );
       }} else {{
-        rows = getFilteredData();
+        total = TOTAL_CARTERA;
       }}
-      const total = rows.reduce((sum, r) => sum + Number(r.Monto_total || 0), 0);
       const el = document.getElementById('kpi-monto-total');
       if (el) el.textContent = formatMoney(total);
     }}
@@ -820,7 +871,7 @@ def main():
       ESTADISTICAS_ANIO.forEach(stat => {{
         const card = document.createElement('div');
         card.className = 'card';
-        card.style.cssText = 'padding:0.75rem 1rem; flex:1 1 auto; min-width:140px; cursor:pointer;';
+        card.style.cssText = 'padding:0.75rem 1rem; width:100%; cursor:pointer;';
         if (selectedYear === String(stat.anio)) {{
           card.classList.add('active');
         }}
@@ -897,11 +948,19 @@ def main():
           cuotas: filtrado.cuotas || 0
         }};
       }});
+
+      const resumenVisible = selectedRange
+        ? resumenArray.filter(r => r.rango === selectedRange)
+        : resumenArray.filter(r => (r.socios > 0 || r.monto > 0 || r.cuotas > 0));
+
+      if (resumenVisible.length === 0) {{
+        return;
+      }}
+
+      const maxSocios = Math.max(...resumenVisible.map(r => r.socios || 0), 1);
+      const maxMonto = Math.max(...resumenVisible.map(r => r.monto || 0), 1);
       
-      const maxSocios = Math.max(...resumenArray.map(r => r.socios || 0), 1);
-      const maxMonto = Math.max(...resumenArray.map(r => r.monto || 0), 1);
-      
-      resumenArray.forEach(r => {{
+      resumenVisible.forEach(r => {{
         const pctSocios = (r.socios / maxSocios) * 100;
         const pctMonto = (r.monto / maxMonto) * 100;
         const card = document.createElement('div');
@@ -967,6 +1026,10 @@ def main():
     }});
     document.getElementById('filter-select').addEventListener('change', e => {{
       selectedRange = e.target.value;
+      if (selectedRange === 'Sin rango') {{
+        selectedRange = '';
+        e.target.value = '';
+      }}
       refreshAll();
     }});
     document.getElementById('year-select').addEventListener('change', e => {{
