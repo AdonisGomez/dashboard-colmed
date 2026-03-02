@@ -437,6 +437,9 @@ def main() -> None:
       background: var(--surface-alt);
       color: var(--muted);
     }}
+    .hidden-filter {{
+      display: none !important;
+    }}
     .link-bar {{
       display: flex;
       justify-content: flex-end;
@@ -530,7 +533,7 @@ def main() -> None:
       <div class="search-box">
         <input id="search-input" type="text" placeholder="🔍 Buscar por código o nombre de socio..." />
       </div>
-      <div class="filter-select">
+      <div class="filter-select hidden-filter">
         <label for="clasif-select">Clasificación:</label>
         <select id="clasif-select">
           <option value="">Todas</option>
@@ -538,19 +541,19 @@ def main() -> None:
           <option value="Sigue_en_mora">Sigue en mora</option>
         </select>
       </div>
-      <div class="filter-select">
+      <div class="filter-select hidden-filter">
         <label for="estado-odoo-select">Estado Odoo:</label>
         <select id="estado-odoo-select">
           <option value="">Todos</option>
         </select>
       </div>
-      <div class="filter-select">
+      <div class="filter-select hidden-filter">
         <label for="anio-select">Año último pago:</label>
         <select id="anio-select">
           <option value="">Todos</option>
         </select>
       </div>
-      <div class="filter-select">
+      <div class="filter-select hidden-filter">
         <label for="rango-select">Rango mora:</label>
         <select id="rango-select">
           <option value="">Todos</option>
@@ -562,7 +565,7 @@ def main() -> None:
           <option value="Sin rango">Sin rango</option>
         </select>
       </div>
-      <div class="filter-select">
+      <div class="filter-select hidden-filter">
         <label for="vista-select">Vista:</label>
         <select id="vista-select">
           <option value="acumulado">Acumulado por mes</option>
@@ -571,25 +574,25 @@ def main() -> None:
           <option value="semana">Por semana</option>
         </select>
       </div>
-      <div class="filter-select" id="wrap-periodo">
+      <div class="filter-select hidden-filter" id="wrap-periodo">
         <label for="periodo-select">Periodo (año-mes):</label>
         <select id="periodo-select">
           <option value="">Todos</option>
         </select>
       </div>
-      <div class="filter-select" id="wrap-vista-dia" style="display:none;">
+      <div class="filter-select" id="wrap-vista-dia">
         <label for="vista-anio">Año:</label>
         <select id="vista-anio"><option value="">—</option></select>
       </div>
-      <div class="filter-select" id="wrap-vista-mes" style="display:none;">
+      <div class="filter-select" id="wrap-vista-mes">
         <label for="vista-mes">Mes:</label>
         <select id="vista-mes"><option value="">—</option></select>
       </div>
-      <div class="filter-select" id="wrap-vista-dia-num" style="display:none;">
+      <div class="filter-select" id="wrap-vista-dia-num">
         <label for="vista-dia">Día:</label>
         <select id="vista-dia"><option value="">—</option></select>
       </div>
-      <div class="filter-select" id="wrap-vista-semana" style="display:none;">
+      <div class="filter-select hidden-filter" id="wrap-vista-semana">
         <label for="vista-semana">Semana:</label>
         <select id="vista-semana"><option value="">—</option></select>
       </div>
@@ -839,34 +842,17 @@ def main() -> None:
     }}
 
     function toggleFiltrosVista() {{
-      const vista = selectedVista || document.getElementById('vista-select').value;
       const wrapPeriodo = document.getElementById('wrap-periodo');
       const wrapDia = document.getElementById('wrap-vista-dia');
       const wrapMes = document.getElementById('wrap-vista-mes');
       const wrapDiaNum = document.getElementById('wrap-vista-dia-num');
       const wrapSemana = document.getElementById('wrap-vista-semana');
-      if (vista === 'dia') {{
-        // Vista por día: año, mes y día.
-        wrapPeriodo.style.display = 'none';
-        wrapDia.style.display = 'flex';
-        wrapMes.style.display = 'flex';
-        wrapDiaNum.style.display = 'flex';
-        wrapSemana.style.display = 'none';
-      }} else if (vista === 'semana') {{
-        // Vista por semana: año y semana ISO.
-        wrapPeriodo.style.display = 'none';
-        wrapDia.style.display = 'flex';
-        wrapMes.style.display = 'none';
-        wrapDiaNum.style.display = 'none';
-        wrapSemana.style.display = 'flex';
-      }} else {{
-        // Vistas mensuales: solo periodo año-mes.
-        wrapPeriodo.style.display = 'flex';
-        wrapDia.style.display = 'none';
-        wrapMes.style.display = 'none';
-        wrapDiaNum.style.display = 'none';
-        wrapSemana.style.display = 'none';
-      }}
+      // Solo mostramos filtros de Año, Mes y Día.
+      wrapPeriodo.style.display = 'none';
+      wrapDia.style.display = 'flex';
+      wrapMes.style.display = 'flex';
+      wrapDiaNum.style.display = 'flex';
+      wrapSemana.style.display = 'none';
     }}
 
     function populateVistaDiaSelects() {{
@@ -929,7 +915,8 @@ def main() -> None:
     }}
 
     function updateKpisPorVista() {{
-      const vista = selectedVista || document.getElementById('vista-select').value;
+      const vistaDia = document.getElementById('vista-dia').value;
+      const vista = vistaDia ? 'dia' : 'acumulado';
       const rowsFilt = getFilteredRows();
       const totalMoraFilt = rowsFilt.reduce((s, r) => s + Number(r.Monto_mora || 0), 0);
       const ratioMora = CARTERA_INICIAL > 0 ? (totalMoraFilt / CARTERA_INICIAL) : 1;
