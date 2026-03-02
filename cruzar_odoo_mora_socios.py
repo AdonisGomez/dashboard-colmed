@@ -9,6 +9,7 @@ ODOO_DIR = BASE_DIR / "odoo"
 ARCHIVO_MORA = BASE_DIR / "Reporte_act_cuotas_completas.xlsx"
 ARCHIVO_MEMBERSHIP = ODOO_DIR / "Membership (res.membership).xlsx"
 ARCHIVO_RESUMEN_ODOO = ODOO_DIR / "odoo_resumen_socios.xlsx"
+ARCHIVO_SOCIOS = BASE_DIR / "socios.xlsx"
 
 OUT_CRUCE = ODOO_DIR / "odoo_vs_mora_socios.xlsx"
 
@@ -132,6 +133,48 @@ def cargar_membership() -> pd.DataFrame:
     return master
 
 
+def cargar_socios() -> pd.DataFrame:
+    """Carga el maestro de socios externo (socios.xlsx) con estado de membresía y precio."""
+    if not ARCHIVO_SOCIOS.exists():
+        print(f"Aviso: no encontré socios.xlsx en {ARCHIVO_SOCIOS}, se omite este maestro.")
+        return pd.DataFrame(columns=["Codigo_socio", "Estado_membresia", "Precio_membresia"])
+
+    df = pd.read_excel(ARCHIVO_SOCIOS)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    col_codigo = next(
+        (c for c in df.columns if "código de socio" in c.lower() or "codigo de socio" in c.lower()),
+        None,
+    )
+    col_estado = next(
+        (c for c in df.columns if "estado de la membres" in c.lower()),
+        None,
+    )
+    col_precio = next(
+        (c for c in df.columns if "precio de membres" in c.lower()),
+        None,
+    )
+
+    if not col_codigo or not col_estado:
+        print(f"Aviso: no pude identificar columnas de código/estado en socios.xlsx: {df.columns}")
+        return pd.DataFrame(columns=["Codigo_socio", "Estado_membresia", "Precio_membresia"])
+
+    cols = [col_codigo, col_estado] + ([col_precio] if col_precio else [])
+    socios = df[cols].copy()
+    rename_map = {col_codigo: "Codigo_socio", col_estado: "Estado_membresia"}
+    if col_precio:
+        rename_map[col_precio] = "Precio_membresia"
+    socios.rename(columns=rename_map, inplace=True)
+
+    socios["Codigo_socio"] = pd.to_numeric(socios["Codigo_socio"], errors="coerce").astype("Int64")
+    if "Precio_membresia" in socios.columns:
+        socios["Precio_membresia"] = pd.to_numeric(socios["Precio_membresia"], errors="coerce")
+    socios["Estado_membresia"] = socios["Estado_membresia"].astype(str).str.strip()
+    socios = socios[socios["Codigo_socio"].notna()].copy()
+    socios = socios.drop_duplicates(subset=["Codigo_socio"], keep="first").copy()
+    return socios
+
+
 def cargar_resumen_odoo() -> pd.DataFrame:
     """Carga el resumen de Odoo por CONSUMIDOR."""
     if not ARCHIVO_RESUMEN_ODOO.exists():
@@ -194,12 +237,24 @@ def main() -> None:
     master = cargar_membership()
     print(f"Socios en membership: {master['Codigo_socio'].nunique()}")
 
+    print("Cargando maestro socios (socios.xlsx)...")
+    socios = cargar_socios()
+    if not socios.empty:
+        print(f"Socios en socios.xlsx: {socios['Codigo_socio'].nunique()}")
+
     print("Cargando resumen Odoo...")
     od = cargar_resumen_odoo()
     print(f"Socios en resumen Odoo: {od['Nombre_norm'].nunique()}")
 
     # Unir mora + nombres por código de socio
     base = mora.merge(master[["Codigo_socio", "Nombre_socio", "Nombre_norm"]], on="Codigo_socio", how="left")
+    # Enriquecer con estado/precio desde socios.xlsx (si existe)
+    if not socios.empty:
+        base = base.merge(
+            socios[["Codigo_socio", "Estado_membresia", "Precio_membresia"]],
+            on="Codigo_socio",
+            how="left",
+        )
 
     # Unir con Odoo por nombre normalizado
     cruce = base.merge(od, on="Nombre_norm", how="left", suffixes=("", "_odoo"))
