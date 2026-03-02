@@ -60,7 +60,8 @@ def main() -> None:
     total_socios = int(df["Codigo_socio"].nunique())
     total_mora = float(df["Monto_mora"].sum())
     total_pagado = float(df["Monto_pagado_total"].sum())
-    total_restante = float(df["Monto_mora_restante"].sum())
+    # Nuevo saldo de cartera global = cartera inicial histórica - pagos acumulados
+    total_nuevo_saldo = max(total_mora - total_pagado, 0.0)
 
     # Provisión virtual mensual: suma de la cuota mensual esperada por socio
     # usando el archivo de plan de cuotas (Reporte_Montos_PowerBI_socios.xlsx).
@@ -149,17 +150,6 @@ def main() -> None:
 
     # Información por socio: primer pago y cuota mensual estimada (para nuevos socios)
     socios_info_list: list[dict] = []
-    try:
-        if primer_pago_dt is not None:
-            info_df = df[["Codigo_socio"]].copy()
-            info_df["Primer_pago_Anio"] = primer_pago_dt.dt.year
-            info_df["Primer_pago_Mes"] = primer_pago_dt.dt.month
-            info_df["Cuota_mensual_estimada"] = info_df["Codigo_socio"].map(
-                lambda c: cuota_por_socio.get(int(c)) if pd.notna(c) and int(c) in cuota_por_socio else 0.0
-            )
-            socios_info_list = info_df.to_dict(orient="records")
-    except Exception:
-        socios_info_list = []
 
     # Pagos por día (para vista por día específico y acumulado hasta fecha)
     pagos_dia_list: list[dict] = []
@@ -487,38 +477,26 @@ def main() -> None:
       <h1>DASHBOARD COLMED</h1>
       <div class="kpi-row">
         <div class="card kpi">
-          <div class="label">Socios en cruce</div>
+          <div class="label">Socios totales</div>
           <div class="value" id="kpi-socios">{total_socios:,}</div>
         </div>
         <div class="card kpi">
-          <div class="label">Cartera inicial (mora)</div>
+          <div class="label">Cartera inicial hasta dic 2026</div>
           <div class="value" id="kpi-mora">$ {total_mora:,.2f}</div>
         </div>
         <div class="card kpi">
-          <div class="label">Provisión virtual mensual</div>
+          <div class="label">Provisión esperada</div>
           <div class="value" id="kpi-prov">$ {total_provision:,.2f}</div>
         </div>
         <div class="card kpi">
-          <div class="label">Pagos acumulados (Odoo)</div>
+          <div class="label">Provisión real (pagos a la fecha)</div>
           <div class="value" id="kpi-odoo">$ {total_pagado:,.2f}</div>
           <div class="label kpi-hint" id="kpi-odoo-hint">según periodo elegido abajo</div>
         </div>
         <div class="card kpi">
-          <div class="label">Nuevo saldo cartera (estimado)</div>
-          <div class="value" id="kpi-resto">$ {total_restante:,.2f}</div>
-          <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Pagos acumulados</div>
-        </div>
-      </div>
-      <div class="kpi-row" style="margin-top:0.4rem;">
-        <div class="card kpi">
-          <div class="label">Nuevos socios en el mes</div>
-          <div class="value" id="kpi-nuevos-socios">--</div>
-          <div class="label kpi-hint">Primer pago en el periodo seleccionado</div>
-        </div>
-        <div class="card kpi">
-          <div class="label">Aumento provisión mensual (nuevos)</div>
-          <div class="value" id="kpi-inc-prov">--</div>
-          <div class="label kpi-hint">Suma de cuotas mensuales estimadas de nuevos socios</div>
+          <div class="label">Nuevo saldo de cartera</div>
+          <div class="value" id="kpi-resto">$ {total_nuevo_saldo:,.2f}</div>
+          <div class="label kpi-hint" id="kpi-resto-hint">Cartera inicial − Provisión real</div>
         </div>
       </div>
     </div>
@@ -599,30 +577,6 @@ def main() -> None:
     </div>
 
     <div class="chips" id="chips-resumen"></div>
-
-    <div class="panel">
-      <h2>Detalle de socios</h2>
-      <div class="table-container">
-        <table id="tabla-socios">
-          <thead>
-            <tr>
-              <th>Código socio</th>
-              <th>Nombre (membership)</th>
-              <th>Nombre Odoo</th>
-              <th class="num">Mora</th>
-              <th class="num">Pagado Odoo</th>
-              <th class="num">Mora restante</th>
-              <th class="num"># pagos</th>
-              <th>Último pago</th>
-              <th>Estado Odoo</th>
-              <th>Rango mora</th>
-              <th>Clasificación</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
   </div>
 
   <script>
@@ -630,7 +584,6 @@ def main() -> None:
     const RESUMEN = {resumen_records};
     const PAGOS_MES = {pagos_mes_json};
     const PAGOS_DIA = {pagos_dia_json};
-    const SOCIOS_INFO = {socios_info_json};
     const PROVISION_MENSUAL = {total_provision};
     const TOTAL_SOCIOS_CRUCE = {total_socios};
     const CARTERA_INICIAL = {total_mora};
@@ -653,37 +606,7 @@ def main() -> None:
       }});
     }}
 
-    function updateNuevosSocios(periodo) {{
-      const span = document.getElementById('kpi-nuevos-socios');
-      const spanProv = document.getElementById('kpi-inc-prov');
-      if (!span || !spanProv || !periodo || periodo === '__todo__') {{
-        if (span) span.textContent = '--';
-        if (spanProv) spanProv.textContent = '--';
-        return;
-      }}
-      const [anioStr, mesStr] = periodo.split('-');
-      const anioSel = Number(anioStr);
-      const mesSel = Number(mesStr);
-      if (!anioSel || !mesSel) {{
-        span.textContent = '--';
-        spanProv.textContent = '--';
-        return;
-      }}
-      const rows = getFilteredRows();
-      const codigosFiltrados = new Set(rows.map(r => r.Codigo_socio).filter(c => c != null));
-      let nuevos = 0;
-      let incProv = 0;
-      SOCIOS_INFO.forEach(info => {{
-        const cod = info.Codigo_socio;
-        if (!codigosFiltrados.has(cod)) return;
-        if (Number(info.Primer_pago_Anio) === anioSel && Number(info.Primer_pago_Mes) === mesSel) {{
-          nuevos += 1;
-          incProv += Number(info.Cuota_mensual_estimada || 0);
-        }}
-      }});
-      span.textContent = nuevos.toLocaleString('es-PE');
-      spanProv.textContent = formatMoney(incProv);
-    }}
+    function updateNuevosSocios(periodo) {{ /* KPI desactivado por ahora */ }}
 
     function getFilteredRows() {{
       const search = document.getElementById('search-input').value.trim().toLowerCase();
