@@ -338,6 +338,7 @@ def main() -> None:
       border-radius: 999px;
       border: 2px solid var(--border);
       background: #fff;
+      color: var(--text);
       font-size: 0.9rem;
     }}
     .search-box input:focus {{
@@ -360,7 +361,11 @@ def main() -> None:
       border-radius: 999px;
       border: 2px solid var(--border);
       background: #fff;
+      color: var(--text);
       font-size: 0.85rem;
+    }}
+    .filter-select select option {{
+      color: var(--text);
     }}
     .filter-select select:focus {{
       outline: none;
