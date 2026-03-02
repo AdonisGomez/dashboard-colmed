@@ -943,53 +943,54 @@ def main() -> None:
       updateKpisPorVista();
     }}
 
-    document.getElementById('search-input').addEventListener('input', () => {{
-      renderTable();
-    }});
-    document.getElementById('clasif-select').addEventListener('change', e => {{
+    const elSearch = document.getElementById('search-input');
+    if (elSearch) elSearch.addEventListener('input', () => {{ renderTable(); }});
+
+    const elClasif = document.getElementById('clasif-select');
+    if (elClasif) elClasif.addEventListener('change', e => {{
       selectedClasif = e.target.value;
       populateEstadoOdooSelect();
       renderTable();
     }});
-    document.getElementById('estado-odoo-select').addEventListener('change', e => {{
-      selectedEstado = e.target.value;
-      renderTable();
-    }});
-    document.getElementById('anio-select').addEventListener('change', e => {{
-      selectedAnio = e.target.value;
-      renderTable();
-    }});
-    document.getElementById('rango-select').addEventListener('change', e => {{
-      selectedRango = e.target.value;
-      renderTable();
-    }});
+    const elEstado = document.getElementById('estado-odoo-select');
+    if (elEstado) elEstado.addEventListener('change', e => {{ selectedEstado = e.target.value; renderTable(); }});
+    const elAnioUlt = document.getElementById('anio-select');
+    if (elAnioUlt) elAnioUlt.addEventListener('change', e => {{ selectedAnio = e.target.value; renderTable(); }});
+    const elRango = document.getElementById('rango-select');
+    if (elRango) elRango.addEventListener('change', e => {{ selectedRango = e.target.value; renderTable(); }});
     // periodo-select ya no se usa
 
     // vista-select ya no se usa
 
-    document.getElementById('vista-anio').addEventListener('change', () => {{
-      selectedVistaAnio = document.getElementById('vista-anio').value;
+    const elVA = document.getElementById('vista-anio');
+    if (elVA) elVA.addEventListener('change', () => {{
+      selectedVistaAnio = elVA.value;
       populateVistaDiaSelects();
       updateKpisPorVista();
     }});
-    document.getElementById('vista-mes').addEventListener('change', () => {{
-      selectedVistaMes = document.getElementById('vista-mes').value;
+    const elVM = document.getElementById('vista-mes');
+    if (elVM) elVM.addEventListener('change', () => {{
+      selectedVistaMes = elVM.value;
       populateVistaDiaSelects();
       updateKpisPorVista();
     }});
-    document.getElementById('vista-dia').addEventListener('change', () => {{
-      selectedVistaDia = document.getElementById('vista-dia').value;
+    const elVD = document.getElementById('vista-dia');
+    if (elVD) elVD.addEventListener('change', () => {{
+      selectedVistaDia = elVD.value;
       updateKpisPorVista();
     }});
-    document.getElementById('vista-semana').addEventListener('change', () => {{
-      selectedVistaSemana = document.getElementById('vista-semana').value;
+    const elVS = document.getElementById('vista-semana');
+    if (elVS) elVS.addEventListener('change', () => {{
+      selectedVistaSemana = elVS.value;
       updateKpisPorVista();
     }});
 
-    populateAnioSelect();
-    populateEstadoOdooSelect();
+    // Inicialización robusta: primero los filtros de fecha (clave del dashboard)
     toggleFiltrosVista();
     if (PAGOS_DIA && PAGOS_DIA.length) populateVistaDiaSelects();
+    // Luego (opcionales) los filtros ocultos
+    try {{ populateAnioSelect(); }} catch (e) {{}}
+    try {{ populateEstadoOdooSelect(); }} catch (e) {{}}
     renderTable();
   </script>
 </body>
