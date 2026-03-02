@@ -803,6 +803,7 @@ def main() -> None:
         selAnio.appendChild(opt);
       }});
       if (savAnio) selAnio.value = savAnio;
+      if (!selAnio.value && anios.length) selAnio.value = String(anios[anios.length - 1]);
 
       const anioSel = selAnio.value ? Number(selAnio.value) : null;
       const meses = anioSel == null ? [] : [...new Set(PAGOS_DIA.filter(p => Number(p.ANIO) === anioSel).map(p => p.MES))].filter(m => m != null).sort((a,b)=>a-b);
@@ -814,6 +815,7 @@ def main() -> None:
         selMes.appendChild(opt);
       }});
       if (savMes) selMes.value = savMes;
+      if (!selMes.value && meses.length) selMes.value = String(meses[meses.length - 1]);
 
       const mesSel = selMes.value ? Number(selMes.value) : null;
       const semanaSel = selSemana.value || '';
@@ -828,6 +830,8 @@ def main() -> None:
         selDia.appendChild(opt);
       }});
       if (savDia) selDia.value = savDia;
+      // Por defecto dejamos el día vacío para que el KPI sea mensual (si el usuario quiere día, lo elige).
+      if (savDia === '') selDia.value = '';
 
       let semanas = [...new Set(PAGOS_DIA.map(p => (p.SEMANA || '').toString()).filter(s => s))];
       if (anioSel != null) {{
